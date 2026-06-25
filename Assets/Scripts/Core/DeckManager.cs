@@ -7,7 +7,8 @@ using System;
 public class DeckManager
 {
     public List<Tile> AllTiles = new List<Tile>();
-
+    public Tile Gosterge;
+    public Tile OkeyTile;
     public void CreateDeck()
     {   
         //this structure for adding new tile for each color
@@ -41,5 +42,21 @@ public class DeckManager
             // swap two element
             (AllTiles[i], AllTiles[x]) = (AllTiles[x], AllTiles[i]);
         }
+    }
+    public void DetermineOkey()
+    {
+        //finding gosterge 
+        for(int i =0; i < AllTiles.Count-1; i++) 
+        {
+            if (!AllTiles[i].IsFakeOkey) 
+            {
+                Gosterge = AllTiles[i];
+                AllTiles.RemoveAt(i);
+                break;
+            }
+        }
+        int okeyValue = Gosterge.TileValue == 13 ? 1 : Gosterge.TileValue + 1;
+        //creating okey
+        Tile OkeyTile = new Tile(okeyValue, Gosterge.Color, false);
     }
 }
