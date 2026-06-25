@@ -3,8 +3,8 @@ using UnityEngine;
 public class GameManager : MonoBehaviour
 {
     public Player[] players = new Player[4];
-    DeckManager deckManager;
-
+    public DeckManager deckManager;
+    public UIManager uiManager;
     void Start()
     {
         //creating 4 player
@@ -18,6 +18,7 @@ public class GameManager : MonoBehaviour
         deckManager.Shuffle();
         deckManager.DetermineOkey();
         DistributeTiles();
+        uiManager.DrawPlayerHand(players[0].Hand);
     }
     //distribution for each player
     public void DistributeTiles()
@@ -44,10 +45,5 @@ public class GameManager : MonoBehaviour
                 }
             }
         }
-    }
-
-    void Update()
-    {
-
     }
 }
