@@ -15,4 +15,12 @@ public class UIManager : MonoBehaviour
             cloneTile.GetComponent<TileDisplay>().SetTile(tileData);
         }
     }
+    public void AddSingleTileToHand(Tile tileData)
+    {
+        // Þablondan yeni bir taþ klonla ve HandPanel'e koy
+        GameObject cloneTile = Instantiate(TilePrefab, HandPanel);
+
+        // Taþa verisini (renk, sayý) gönder
+        cloneTile.GetComponent<TileDisplay>().SetTile(tileData);
+    }
 }

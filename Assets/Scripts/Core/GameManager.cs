@@ -46,4 +46,27 @@ public class GameManager : MonoBehaviour
             }
         }
     }
+    // Bu metodu GameManager sýnýfýnýn içine ekle
+    public void DrawTileFromDeck()
+    {
+        // Destede taþ kalmadýysa hata vermemesi için kontrol ediyoruz
+        if (deckManager.AllTiles.Count > 0)
+        {
+            // 1. Destedeki en üst taþý (0. indeks) al
+            Tile drawnTile = deckManager.AllTiles[0];
+
+            // 2. Taþý arka planda oyuncunun listesine ekle
+            players[0].AddTile(drawnTile);
+
+            // 3. Taþý desteden sil
+            deckManager.AllTiles.RemoveAt(0);
+
+            // 4. UIManager'a haber ver, ekranda ýstakaya o taþý çizsin!
+            uiManager.AddSingleTileToHand(drawnTile);
+        }
+        else
+        {
+            Debug.Log("Destede taþ kalmadý!");
+        }
+    }
 }

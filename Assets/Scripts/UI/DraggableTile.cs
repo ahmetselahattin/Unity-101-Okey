@@ -1,37 +1,90 @@
 using UnityEngine;
-using UnityEngine.EventSystems; 
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
-// Sýnýfýmýzýn yanýna bu 3 arayüzü (interface) ekliyoruz
 public class DraggableTile : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
 {
-    Transform originalParent; // Taþýn ilk bulunduðu yeri hatýrlamak için
+    public Transform ParentToReturnTo = null; // Dýþarýdan müdahaleye açýk yeni evimiz
+    GameObject placeholder = null;
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        // Taþý tuttuðumuzda eski yerini hafýzaya alýyoruz
-        originalParent = transform.parent;
+        // Taþý ilk tuttuðumuzda varsayýlan evini þu an bulunduðu yer yapýyoruz
+        ParentToReturnTo = transform.parent;
 
-        // Taþý Grid'den koparýp en üst katmana (Canvas'a) alýyoruz ki diðer taþlarýn altýnda kalmasýn
-        transform.SetParent(transform.root);
+        placeholder = new GameObject("Placeholder");
 
-        // Farenin taþýn içinden geçip altýndaki zemini (veya diðer taþý) algýlayabilmesi için
+        // Bütün originalParent'lar ParentToReturnTo oldu
+        placeholder.transform.SetParent(ParentToReturnTo);
+
+        LayoutElement le = placeholder.AddComponent<LayoutElement>();
+        le.preferredWidth = 50;
+        le.preferredHeight = 70;
+
+        placeholder.transform.SetSiblingIndex(transform.GetSiblingIndex());
+
+        transform.SetParent(GetComponentInParent<Canvas>().transform);
         GetComponent<CanvasGroup>().blocksRaycasts = false;
     }
 
     public void OnDrag(PointerEventData eventData)
     {
-        // Input.mousePosition yerine, modern UI sistemi olan eventData'nýn pozisyonunu kullanýyoruz.
-        // Bu kod hem mobilde hem bilgisayarda kusursuz çalýþýr.
         transform.position = eventData.position;
+
+        // originalParent.childCount yerine ParentToReturnTo.childCount
+        int newSiblingIndex = ParentToReturnTo.childCount;
+
+        for (int i = 0; i < ParentToReturnTo.childCount; i++)
+        {
+            if (transform.position.x < ParentToReturnTo.GetChild(i).position.x)
+            {
+                newSiblingIndex = i;
+
+                if (placeholder.transform.GetSiblingIndex() < newSiblingIndex)
+                {
+                    newSiblingIndex--;
+                }
+                break;
+            }
+        }
+
+        placeholder.transform.SetSiblingIndex(newSiblingIndex);
     }
 
     public void OnEndDrag(PointerEventData eventData)
     {
-        // Taþý býraktýðýmýzda þimdilik eski yerine geri dönsün 
-        // (Ýleride burayý ýstakada yeni bir yere oturmasý için deðiþtireceðiz)
-        transform.SetParent(originalParent);
+        transform.SetParent(ParentToReturnTo);
 
-        // Týklama engelini tekrar açýyoruz
-        GetComponent<CanvasGroup>().blocksRaycasts = true;
+        if (ParentToReturnTo.GetComponent<LayoutGroup>() != null)
+        {
+            transform.SetSiblingIndex(placeholder.transform.GetSiblingIndex());
+        }
+        else
+        {
+            // --- KESÝN ÇÖZÜM: Inspector'ý ezip her þeyi kodla merkeze zorluyoruz ---
+            RectTransform rt = GetComponent<RectTransform>();
+
+            // Çýpalarý (Anchor) tam ortaya al
+            rt.anchorMin = new Vector2(0.5f, 0.5f);
+            rt.anchorMax = new Vector2(0.5f, 0.5f);
+
+            // Pivot'u tam ortaya al
+            rt.pivot = new Vector2(0.5f, 0.5f);
+
+            // Konumu sýfýrla (X:0, Y:0)
+            rt.anchoredPosition = Vector2.zero;
+        }
+
+        if (ParentToReturnTo.name == "RightDiscardArea")
+        {
+            GetComponent<CanvasGroup>().blocksRaycasts = false;
+            GetComponent<CanvasGroup>().interactable = false;
+        }
+        else
+        {
+            GetComponent<CanvasGroup>().blocksRaycasts = true;
+        }
+
+        Destroy(placeholder);
     }
 }
