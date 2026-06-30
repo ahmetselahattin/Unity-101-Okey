@@ -75,10 +75,14 @@ public class DraggableTile : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
             rt.anchoredPosition = Vector2.zero;
         }
 
+        // --- KÝLÝT MEKANÝZMASI ---
         if (ParentToReturnTo.name == "RightDiscardArea")
         {
             GetComponent<CanvasGroup>().blocksRaycasts = false;
             GetComponent<CanvasGroup>().interactable = false;
+
+            // BÝZÝM HAMLEMÝZ BÝTTÝ! GameManager'a turu bitirmesini söylüyoruz:
+            GameManager.Instance.EndTurn();
         }
         else
         {
