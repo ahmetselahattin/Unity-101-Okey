@@ -24,24 +24,7 @@ public class GameManager : MonoBehaviour
 
     void Start()
     {
-        for (int i = 0; i < 4; i++)
-        {
-            players[i] = new Player();
-        }
 
-        deckManager = new DeckManager();
-        deckManager.CreateDeck();
-        deckManager.Shuffle();
-        deckManager.DetermineOkey();
-
-        // Taþlarý daðýt
-        DistributeTiles();
-
-        // Ýlk oyuncunun elini ekrana çizdir
-        uiManager.DrawPlayerHand(players[0].Hand);
-
-        // Oyunu baþlattýðýmýzda ilk turu baþlatalým (0 numara, yani biz baþlýyoruz)
-        StartTurn();
     }
 
     // --- SENÝN ÖNCEDEN YAZDIÐIN TAÞ DAÐITMA FONKSÝYONU ---
@@ -255,5 +238,27 @@ public class GameManager : MonoBehaviour
         {
             return true;
         }
+    }
+    public void OyunuBaslat() 
+    {
+        Debug.Log("Oyun Baþlýyor! Taþlar daðýtýlýyor...");
+        for (int i = 0; i < 4; i++)
+        {
+            players[i] = new Player();
+        }
+
+        deckManager = new DeckManager();
+        deckManager.CreateDeck();
+        deckManager.Shuffle();
+        deckManager.DetermineOkey();
+
+        // Taþlarý daðýt
+        DistributeTiles();
+
+        // Ýlk oyuncunun elini ekrana çizdir
+        uiManager.DrawPlayerHand(players[0].Hand);
+
+        // Oyunu baþlattýðýmýzda ilk turu baþlatalým (0 numara, yani biz baþlýyoruz)
+        StartTurn();
     }
 }
