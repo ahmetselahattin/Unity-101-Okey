@@ -16,6 +16,10 @@ public class GameManager : MonoBehaviour
     // O anki oyuncunun sýrasýný tutan deðiþken
     public int currentPlayerIndex = 0;
 
+    [Header("Oyun Ýçi Objeler")]
+    public GameObject inGameUI;       // Butonlarýn olduðu paket
+    public GameObject centerStone;    // Ortadaki okey taþý veya gösterge taþý
+
     void Awake()
     {
         // GameManager'a her yerden kolayca ulaþabilmemizi saðlar
@@ -24,7 +28,9 @@ public class GameManager : MonoBehaviour
 
     void Start()
     {
-
+        // 1. Oyun baþladýðýnda (bekleme aþamasýnda) bunlarý gizle!
+        if (inGameUI != null) inGameUI.SetActive(false);
+        if (centerStone != null) centerStone.SetActive(false);
     }
 
     // --- SENÝN ÖNCEDEN YAZDIÐIN TAÞ DAÐITMA FONKSÝYONU ---
@@ -152,56 +158,6 @@ public class GameManager : MonoBehaviour
         // 3. Ýþini bitirdi, sýrayý devretsin
         EndTurn();
     }
-    // Verilen listenin geçerli bir GRUP peri (Ayný sayý, farklý renk) olup olmadýðýný kontrol eder.
-    public bool CheckGroupPer(List<Tile> tileList)
-    {
-        SortHand(tileList);
-
-        if (tileList.Count == 3 || tileList.Count == 4)
-        {
-            for (int i = 1; i < tileList.Count; i++) 
-            {
-                // Sýralý listede ayný renkler varsa mutlaka yan yana düþecektir.
-                if (tileList[i].Color == tileList[i - 1].Color)
-                {
-                    return false;
-                }
-
-                // Sayýlarýn hepsi ilk sayýyla ayný olmak zorunda, bu mantýðýn doðru.
-                if (tileList[0].TileValue != tileList[i].TileValue)
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        return false;
-    }
-
-    public bool CheckSequencePer(List<Tile> tileList)
-    {
-        SortHand(tileList);
-
-        if (tileList.Count >= 3)
-        {
-            for (int i = 1; i < tileList.Count; i++)
-            {
-                if (tileList[0].Color != tileList[i].Color)
-                {
-                    return false;
-                }
-
-                if (tileList[0].TileValue + i != tileList[i].TileValue)
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        return false;
-    }
     // Parametre olarak "Geçerli perlerin bir listesini" alýyor. 
     // Örneðin: { [Kýrmýzý 7, Mavi 7, Siyah 7], [Mavi 4, Mavi 5, Mavi 6] }
         public int CalculateTotalPoints(List<List<Tile>> allMeldsToOpen)
@@ -239,9 +195,14 @@ public class GameManager : MonoBehaviour
             return true;
         }
     }
-    public void OyunuBaslat() 
+    public void OyunuBaslat()
     {
         Debug.Log("Oyun Baþlýyor! Taþlar daðýtýlýyor...");
+
+        // Oyun baþladýðýnda objeleri görünür yapýyoruz
+        if (inGameUI != null) inGameUI.SetActive(true);
+        if (centerStone != null) centerStone.SetActive(true);
+
         for (int i = 0; i < 4; i++)
         {
             players[i] = new Player();
@@ -250,7 +211,12 @@ public class GameManager : MonoBehaviour
         deckManager = new DeckManager();
         deckManager.CreateDeck();
         deckManager.Shuffle();
+
+        // Okeyi belirliyoruz
         deckManager.DetermineOkey();
+
+        // 1. EKLENEN SATIR: Okey belirlendikten hemen sonra UIManager'a göstergeyi çizdiriyoruz
+        uiManager.GostergeyiEkranaYansit(deckManager.Gosterge);
 
         // Taþlarý daðýt
         DistributeTiles();
@@ -260,5 +226,98 @@ public class GameManager : MonoBehaviour
 
         // Oyunu baþlattýðýmýzda ilk turu baþlatalým (0 numara, yani biz baþlýyoruz)
         StartTurn();
+    }
+    // --- OKEY (JOKER) KONTROLÜ ---
+    public bool TasOkeyMi(Tile tas)
+    {
+        // Gerçek Okey mi diye bakýyoruz. (Sahte okey joker DEÐÝLDÝR)
+        if (deckManager != null && deckManager.OkeyTile != null)
+        {
+            if (tas.Color == deckManager.OkeyTile.Color && tas.TileValue == deckManager.OkeyTile.TileValue && !tas.IsFakeOkey)
+            {
+                return true; // Bu taþ her þeyin yerine geçebilir!
+            }
+        }
+        return false;
+    }
+
+    // --- GRUP PERÝ KONTROLÜ (Örn: Kýrmýzý 7, Mavi 7, Siyah 7) ---
+    public bool CheckGroupPer(List<Tile> tileList)
+    {
+        if (tileList.Count < 3 || tileList.Count > 4) return false;
+
+        List<Tile> normalTiles = new List<Tile>();
+        int okeyCount = 0;
+
+        // 1. Okeyleri ve normal taþlarý birbirinden ayýrýyoruz
+        foreach (Tile t in tileList)
+        {
+            if (TasOkeyMi(t)) okeyCount++;
+            else normalTiles.Add(t);
+        }
+
+        // Eðer elde 1 tane (veya 0) normal taþ kalmýþsa, gerisi okey demektir ve her türlü per olur.
+        if (normalTiles.Count <= 1) return true;
+
+        int expectedValue = normalTiles[0].TileValue;
+        List<TileColor> usedColors = new List<TileColor>();
+
+        // 2. Kalan normal taþlarýn kendi içindeki uyumunu kontrol ediyoruz
+        foreach (Tile t in normalTiles)
+        {
+            // Tüm normal taþlarýn rakamý ayný olmak zorunda
+            if (t.TileValue != expectedValue) return false;
+
+            // Ayný renkten iki tane normal taþ olamaz
+            if (usedColors.Contains(t.Color)) return false;
+
+            usedColors.Add(t.Color);
+        }
+
+        return true;
+    }
+
+    // --- SERÝ PERÝ KONTROLÜ (Örn: Mavi 4, Mavi 5, Okey, Mavi 7) ---
+    public bool CheckSequencePer(List<Tile> tileList)
+    {
+        if (tileList.Count < 3) return false;
+
+        List<Tile> normalTiles = new List<Tile>();
+        int okeyCount = 0;
+
+        // 1. Okeyleri ve normal taþlarý ayýr
+        foreach (Tile t in tileList)
+        {
+            if (TasOkeyMi(t)) okeyCount++;
+            else normalTiles.Add(t);
+        }
+
+        if (normalTiles.Count <= 1) return true;
+
+        // 2. Normal taþlarý küçükten büyüðe sýrala ki aradaki boþluklarý hesaplayabilelim
+        normalTiles.Sort((t1, t2) => t1.TileValue.CompareTo(t2.TileValue));
+
+        TileColor expectedColor = normalTiles[0].Color;
+        int requiredOkeys = 0; // Kapatmamýz gereken boþluk sayýsý
+
+        for (int i = 0; i < normalTiles.Count; i++)
+        {
+            // Bütün normal taþlarýn rengi ayný olmak zorunda
+            if (normalTiles[i].Color != expectedColor) return false;
+
+            if (i > 0)
+            {
+                int diff = normalTiles[i].TileValue - normalTiles[i - 1].TileValue;
+
+                // Ayný sayýdan iki tane varsa seri olamaz (Örn: Mavi 5, Mavi 5)
+                if (diff == 0) return false;
+
+                // Aradaki boþluðu kapatmak için Okey harcamamýz lazým (Örn: 5 ile 7 arasý 1 okey ister)
+                requiredOkeys += (diff - 1);
+            }
+        }
+
+        // Eksik taþ sayýsý (boþluklar), elimizdeki okey sayýsýna eþit veya daha azsa bu seri geçerlidir!
+        return requiredOkeys <= okeyCount;
     }
 }

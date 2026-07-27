@@ -57,6 +57,6 @@ public class DeckManager
         }
         int okeyValue = Gosterge.TileValue == 13 ? 1 : Gosterge.TileValue + 1;
         //creating okey
-        Tile OkeyTile = new Tile(okeyValue, Gosterge.Color, false);
+        OkeyTile = new Tile(okeyValue, Gosterge.Color, false);
     }
 }

@@ -1,48 +1,54 @@
 using UnityEngine;
 using Photon.Pun;
 using Photon.Realtime;
+using TMPro; // TextMeshPro kullanmak için bu kütüphaneyi ekliyoruz
 
 public class TableManager : MonoBehaviourPunCallbacks
 {
-    // Okey masasý için gereken tam oyuncu sayýsý
+    // Unity arayüzünden sürükleyip býrakacaðýmýz yazý objesi
+    public TextMeshProUGUI waitingText;
+
     private readonly int requiredPlayers = 4;
 
     void Start()
     {
-        // Sahne yüklendiðinde mevcut durumu kontrol et
         CheckPlayerCount();
     }
 
-    // newPlayer kelimesinin solundaki Player kýsmýný aþaðýdaki gibi deðiþtiriyoruz
     public override void OnPlayerEnteredRoom(Photon.Realtime.Player newPlayer)
     {
         Debug.Log(newPlayer.NickName + " masaya oturdu!");
         CheckPlayerCount();
     }
 
-    // Ayný þekilde burayý da güncelliyoruz
     public override void OnPlayerLeftRoom(Photon.Realtime.Player otherPlayer)
     {
-        Debug.Log("Bir oyuncu masadan kalktý. Oyun beklemeye alýndý/iptal edildi.");
+        Debug.Log("Bir oyuncu masadan kalktý.");
         CheckPlayerCount();
     }
 
-    // Masadaki kiþi sayýsýný kontrol eden ana fonksiyonumuz
     private void CheckPlayerCount()
     {
         int currentPlayers = PhotonNetwork.CurrentRoom.PlayerCount;
-        Debug.Log("Oyuncular bekleniyor... " + currentPlayers + "/" + requiredPlayers);
 
-        // Eðer masada 4 kiþi olduysa
+        // Ekrana kaç kiþi olduðunu yazdýrýyoruz
+        if (waitingText != null)
+        {
+            waitingText.text = "Oyuncular Bekleniyor... " + currentPlayers + " / " + requiredPlayers;
+        }
+
         if (currentPlayers == requiredPlayers)
         {
             Debug.Log("Masa doldu!");
 
-            // ÇOK KRÝTÝK: Oyunu 4 kiþi ayný anda baþlatmaya çalýþmasýn!
-            // Sadece odayý kuran kiþi (Masa Sahibi) taþlarý daðýtma komutunu versin.
+            // 4 kiþi dolduðunda bekleme yazýsýný ekrandan gizle
+            if (waitingText != null)
+            {
+                waitingText.gameObject.SetActive(false);
+            }
+
             if (PhotonNetwork.IsMasterClient)
             {
-                // GameManager'daki hazýrladýðýmýz fonksiyonu çaðýrýyoruz
                 FindObjectOfType<GameManager>().OyunuBaslat();
             }
         }
