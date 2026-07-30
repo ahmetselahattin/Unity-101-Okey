@@ -5,6 +5,8 @@ using System.Collections.Generic; // Listeler için gerekli
 
 public class GameManager : MonoBehaviour
 {
+    [Header("Test Ayarlarý")]
+    public bool testModuAktif = false;
     // --- SINGLETON YAPISI ---
     public static GameManager Instance;
     // Oyunun ilk turu olup olmadýðýný takip eden bayrak
@@ -28,9 +30,18 @@ public class GameManager : MonoBehaviour
 
     void Start()
     {
-        // 1. Oyun baþladýðýnda (bekleme aþamasýnda) bunlarý gizle!
-        if (inGameUI != null) inGameUI.SetActive(false);
-        if (centerStone != null) centerStone.SetActive(false);
+        void Start()
+        {
+            // 1. Oyun baþladýðýnda (bekleme aþamasýnda) bunlarý gizle!
+            if (inGameUI != null) inGameUI.SetActive(false);
+            if (centerStone != null) centerStone.SetActive(false);
+
+            // YENÝ: Eðer test modundaysak 4 kiþi bekleme, direkt oyunu baþlat!
+            if (testModuAktif)
+            {
+                OyunuBaslat();
+            }
+        }
     }
 
     // --- SENÝN ÖNCEDEN YAZDIÐIN TAÞ DAÐITMA FONKSÝYONU ---

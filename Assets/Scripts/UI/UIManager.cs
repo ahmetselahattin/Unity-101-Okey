@@ -7,12 +7,64 @@ public class UIManager : MonoBehaviour
 {
     [Header("Istaka ve Deste Öðeleri")]
     public GameObject TilePrefab;
+    public GameObject SlotPrefab; // YENÝ: Boþ yuva þablonu
     public Transform HandPanel;
     public Button DeckButton;
 
     [Header("Gösterge Taþý UI Öðeleri")]
-    // GameManager'daki centerStone objesinin içindeki yazý bileþeni
     public TextMeshProUGUI centerStoneText;
+
+    // YENÝ: Istakadaki tüm boþ yuvalarýn listesi
+    private List<Transform> lstakaSlotlari = new List<Transform>();
+
+    private void Start()
+    {
+        IstakayiOlustur();
+    }
+
+    // --- ISTAKA YUVALARINI (SLOTLAR) OLUÞTURMA ---
+    private void IstakayiOlustur()
+    {
+        // 101 Okey ýstakasý genelde 2 satýr x 21 sütun = 42 yuvadan oluþur
+        for (int i = 0; i < 42; i++)
+        {
+            GameObject yeniSlot = Instantiate(SlotPrefab, HandPanel);
+            yeniSlot.name = "Slot_" + i;
+            lstakaSlotlari.Add(yeniSlot.transform);
+        }
+    }
+
+    // --- ISTAKA VE TAÞ ÇÝZÝM YÖNETÝMÝ (GÜNCELLENDÝ) ---
+    public void DrawPlayerHand(List<Tile> playerHand)
+    {
+        // Taþlarý en baþtaki slotlardan baþlayarak yerleþtir
+        for (int i = 0; i < playerHand.Count; i++)
+        {
+            // Eðer elimizdeki taþ sayýsý slot sayýsýný geçerse hata almamak için güvenlik önlemi
+            if (i >= lstakaSlotlari.Count) break;
+
+            // Taþý doðrudan HandPanel'e deðil, sýradaki Slot'un içine klonla
+            GameObject cloneTile = Instantiate(TilePrefab, lstakaSlotlari[i]);
+            cloneTile.GetComponent<TileDisplay>().SetTile(playerHand[i]);
+        }
+    }
+
+    public void RefreshHand(List<Tile> playerHand)
+    {
+        // Eski sistemde HandPanel'in içini temizliyorduk.
+        // Artýk HandPanel'in içinde Slot'lar var. Sadece Slot'larýn içindeki taþlarý silmeliyiz.
+        foreach (Transform slot in lstakaSlotlari)
+        {
+            if (slot.childCount > 0)
+            {
+                // Slot'un içindeki taþý (ilk çocuðu) yok et
+                Destroy(slot.GetChild(0).gameObject);
+            }
+        }
+
+        // Listeyi tekrar çiz
+        DrawPlayerHand(playerHand);
+    }
 
     // --- BUTON VE ETKÝLEÞÝM YÖNETÝMÝ ---
     public void SetDeckButtonState(bool isInteractable)
@@ -24,14 +76,6 @@ public class UIManager : MonoBehaviour
     }
 
     // --- ISTAKA VE TAÞ ÇÝZÝM YÖNETÝMÝ ---
-    public void DrawPlayerHand(List<Tile> playerHand)
-    {
-        foreach (Tile tileData in playerHand)
-        {
-            GameObject cloneTile = Instantiate(TilePrefab, HandPanel);
-            cloneTile.GetComponent<TileDisplay>().SetTile(tileData);
-        }
-    }
 
     public void AddSingleTileToHand(Tile tileData)
     {
@@ -40,18 +84,6 @@ public class UIManager : MonoBehaviour
 
         // Taþa verisini (renk, sayý) gönder
         cloneTile.GetComponent<TileDisplay>().SetTile(tileData);
-    }
-
-    public void RefreshHand(List<Tile> playerHand)
-    {
-        // 1. Istakanýn (HandPanel) içindeki tüm eski fiziksel taþlarý yok et
-        foreach (Transform child in HandPanel)
-        {
-            Destroy(child.gameObject);
-        }
-
-        // 2. Çizdirme fonksiyonunu çaðýrarak sýralý listeyi ekrana bas
-        DrawPlayerHand(playerHand);
     }
 
     // --- GÖSTERGE YANSITMA YÖNETÝMÝ ---
