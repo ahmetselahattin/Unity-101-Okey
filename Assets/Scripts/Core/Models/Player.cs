@@ -8,11 +8,14 @@ public class Player
     public string NickName;
     public bool IsAI;
     public bool HasOpenedHand;
+    public bool HasOpenedPairs;
     public bool HasDrawnFromDiscard;
     public int TotalScore;
 
     public List<Tile> Hand { get; private set; }
     public List<Meld> OpenedMelds { get; private set; }
+
+    public int PairCount => OpenedMelds.FindAll(m => m.Type == MeldType.Pair).Count;
 
     public Player(int seatIndex = 0, string nickName = "Player", bool isAI = false)
     {
@@ -20,6 +23,7 @@ public class Player
         NickName = nickName;
         IsAI = isAI;
         HasOpenedHand = false;
+        HasOpenedPairs = false;
         HasDrawnFromDiscard = false;
         TotalScore = 0;
         Hand = new List<Tile>();
@@ -37,7 +41,6 @@ public class Player
     public bool RemoveTile(Tile tile)
     {
         if (tile == null) return false;
-        // Referans veya değer eşleşmesi ile bul ve sil
         int index = Hand.FindIndex(t => t == tile || t.IsSame(tile));
         if (index >= 0)
         {
@@ -52,6 +55,7 @@ public class Player
         Hand.Clear();
         OpenedMelds.Clear();
         HasOpenedHand = false;
+        HasOpenedPairs = false;
         HasDrawnFromDiscard = false;
     }
 }

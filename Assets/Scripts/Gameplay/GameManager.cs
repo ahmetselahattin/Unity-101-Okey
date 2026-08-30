@@ -114,7 +114,6 @@ public class GameManager : MonoBehaviour
     {
         if (deckManager == null) return;
 
-        // 1. Oyuncuya 22 taş, diğerlerine 21 taş
         for (int i = 0; i < 4; i++)
         {
             int tileCount = (i == 0) ? 22 : 21;
@@ -129,9 +128,6 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Desteden normal taş çekme işlemi.
-    /// </summary>
     public void DrawTileFromDeck()
     {
         if (hasDrawnTileThisTurn)
@@ -157,10 +153,6 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Sol oyuncunun attığı taşı (yandan taş) alma işlemi.
-    /// Kural: Yandan taş alan oyuncu bu tur elini açmak zorundadır!
-    /// </summary>
     public void DrawTileFromLeftDiscard()
     {
         if (hasDrawnTileThisTurn)
@@ -179,7 +171,7 @@ public class GameManager : MonoBehaviour
         lastDiscardedTileByLeftPlayer = null;
 
         players[0].AddTile(drawnTile);
-        players[0].HasDrawnFromDiscard = true; // Kural bayrağı: El açmak zorunda!
+        players[0].HasDrawnFromDiscard = true;
         hasDrawnTileThisTurn = true;
 
         if (uiManager != null)
@@ -230,9 +222,9 @@ public class GameManager : MonoBehaviour
             }
 
             players[0].HasOpenedHand = true;
-            players[0].HasDrawnFromDiscard = false; // Yandan taş alma şartı sağlandı!
+            players[0].HasOpenedPairs = false;
+            players[0].HasDrawnFromDiscard = false;
 
-            // Açılan taşları oyuncunun el listesinden çıkar
             foreach (var m in newOpenedMelds)
             {
                 foreach (var tile in m.Tiles)
@@ -247,6 +239,44 @@ public class GameManager : MonoBehaviour
         else
         {
             Debug.LogWarning($"[GameManager] El açma başarısız: {error}");
+        }
+    }
+
+    /// <summary>
+    /// En az 5 çift (10 taş) ile çift açma işlemi.
+    /// </summary>
+    public void OnOpenPairsClicked()
+    {
+        if (deckManager == null || players[0] == null) return;
+
+        if (OkeyRuleEngine.ValidateOpenPairs(players[0].Hand, deckManager.OkeyTile, out List<Meld> pairsToOpen, out string error))
+        {
+            Debug.Log($"[GameManager] Tebrikler! {pairsToOpen.Count} çift ile el masaya açılıyor.");
+
+            foreach (var pairMeld in pairsToOpen)
+            {
+                tableMelds.Add(pairMeld);
+                players[0].OpenedMelds.Add(pairMeld);
+
+                foreach (var tile in pairMeld.Tiles)
+                {
+                    players[0].RemoveTile(tile);
+                }
+            }
+
+            players[0].HasOpenedHand = true;
+            players[0].HasOpenedPairs = true;
+            players[0].HasDrawnFromDiscard = false;
+
+            if (uiManager != null)
+            {
+                uiManager.RefreshHand(players[0].Hand);
+                uiManager.DrawOpenedMeldsOnTable(tableMelds);
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"[GameManager] Çift açma başarısız: {error}");
         }
     }
 
@@ -266,7 +296,7 @@ public class GameManager : MonoBehaviour
 
         Meld targetMeld = tableMelds[meldIndex];
 
-        if (OkeyRuleEngine.CanProcessTileToMeld(tile, targetMeld, deckManager.OkeyTile, out bool addToStart))
+        if (OkeyRuleEngine.CanProcessTileToMeld(tile, targetMeld, deckManager.OkeyTile, players[0].HasOpenedPairs, out bool addToStart))
         {
             if (addToStart)
             {
@@ -293,16 +323,11 @@ public class GameManager : MonoBehaviour
         return false;
     }
 
-    /// <summary>
-    /// Oyuncu sağ tarafa taş attığında çağrılır.
-    /// </summary>
     public void OnPlayerDiscardTile(Tile discardedTile)
     {
-        // 1. Kural Kontrolü: Yandan taş çekip el açmadıysa taş atamaz!
         if (players[0].HasDrawnFromDiscard)
         {
             Debug.LogError("[GameManager] KURAL İHLALİ: Yandan taş aldığınız için bu tur elinizi açmak zorundasınız!");
-            // Taşı tekrar ele ekle ve UI'ı yenile
             if (uiManager != null)
             {
                 uiManager.RefreshHand(players[0].Hand);
@@ -366,7 +391,6 @@ public class GameManager : MonoBehaviour
             {
                 StartCoroutine(botController.ExecuteBotTurn(players[activePlayerIndex], deckManager, (botDiscard) =>
                 {
-                    // Eğer solumuzdaki bot (Bot 3) taş attıysa, bu taş bizim sol taş alanımıza düşer!
                     if (activePlayerIndex == 3)
                     {
                         lastDiscardedTileByLeftPlayer = botDiscard;
@@ -384,7 +408,7 @@ public class GameManager : MonoBehaviour
     public bool TasOkeyMi(Tile tas) => OkeyRuleEngine.IsOkeyTile(tas, deckManager?.OkeyTile);
     public bool CheckGroupPer(List<Tile> tileList) => OkeyRuleEngine.CheckGroupPer(tileList, deckManager?.OkeyTile);
     public bool CheckSequencePer(List<Tile> tileList) => OkeyRuleEngine.CheckSequencePer(tileList, deckManager?.OkeyTile);
-    public bool CheckForPairs(List<Tile> hand) => OkeyRuleEngine.CheckForPairs(hand, deckManager?.OkeyTile, out _);
+    public bool CheckForPairs(List<Tile> hand) => OkeyRuleEngine.DetectPairs(hand, deckManager?.OkeyTile, out _);
     public int CalculateTotalPointsWithOkey(List<List<Tile>> allMelds) => OkeyRuleEngine.CalculateTotalPoints(allMelds, deckManager?.OkeyTile);
     public void SortHand(List<Tile> handToSort) => HandSorter.SortByColorAndValue(handToSort, deckManager?.OkeyTile);
 }
