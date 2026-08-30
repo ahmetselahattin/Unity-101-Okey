@@ -5,6 +5,9 @@ using UnityEngine.UI;
 
 public class TableView : MonoBehaviour
 {
+    [Header("Tile Prefab")]
+    public GameObject TilePrefab;
+
     [Header("Gösterge Taş UI Referansları")]
     public GameObject centerStone;
     public TileDisplay gostergeTileDisplay;
@@ -88,7 +91,64 @@ public class TableView : MonoBehaviour
 
     public void DrawOpenedMelds(List<Meld> melds)
     {
-        if (melds == null) return;
+        if (tableCenterContainer == null) return;
+
+        // 1. Önceki açılan perleri temizle
+        for (int i = tableCenterContainer.childCount - 1; i >= 0; i--)
+        {
+            Destroy(tableCenterContainer.GetChild(i).gameObject);
+        }
+
+        if (melds == null || melds.Count == 0) return;
+
         Debug.Log($"[TableView] Masanın ortasına toplam {melds.Count} adet per sergilendi.");
+
+        // 2. Her bir Meld için bir grup oluştur ve taşlarını yerleştir
+        for (int mIndex = 0; mIndex < melds.Count; mIndex++)
+        {
+            Meld meld = melds[mIndex];
+
+            GameObject meldObj = new GameObject("MeldGroup_" + mIndex);
+            meldObj.transform.SetParent(tableCenterContainer, false);
+
+            RectTransform meldRect = meldObj.AddComponent<RectTransform>();
+            meldRect.sizeDelta = new Vector2((meld.Tiles.Count * 45) + 10, 65);
+
+            HorizontalLayoutGroup layout = meldObj.AddComponent<HorizontalLayoutGroup>();
+            layout.spacing = 2;
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlWidth = false;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+
+            // Taş işleme ve tıklama dinleyicisi
+            MeldGroupUI groupUI = meldObj.AddComponent<MeldGroupUI>();
+            groupUI.Initialize(mIndex, meld);
+
+            // Per içindeki taşları oluştur
+            if (TilePrefab != null)
+            {
+                foreach (Tile tile in meld.Tiles)
+                {
+                    GameObject tileObj = Instantiate(TilePrefab, meldObj.transform);
+                    tileObj.name = "TableTile_" + tile.TileValue;
+                    tileObj.transform.localScale = new Vector3(0.85f, 0.85f, 1f);
+
+                    // Masadaki taşların sürüklenmesini engelle
+                    DraggableTile dragComp = tileObj.GetComponent<DraggableTile>();
+                    if (dragComp != null) Destroy(dragComp);
+
+                    CanvasGroup cg = tileObj.GetComponent<CanvasGroup>();
+                    if (cg != null) cg.blocksRaycasts = false; // Tıklamalar üstteki MeldGroupUI'a geçsin
+
+                    TileDisplay display = tileObj.GetComponent<TileDisplay>();
+                    if (display != null)
+                    {
+                        display.SetTile(tile);
+                    }
+                }
+            }
+        }
     }
 }

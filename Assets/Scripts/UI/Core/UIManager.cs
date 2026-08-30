@@ -21,6 +21,9 @@ public class UIManager : MonoBehaviour
     public TileDisplay LeftDiscardTileDisplay;
     public Button LeftDiscardButton;
 
+    [Header("Masa Ortası Açılan Perler Paneli")]
+    public Transform TableCenterContainer;
+
     [Header("Alt Kontrolcüler")]
     public IstakaController istakaController;
     public TableView tableView;
@@ -43,6 +46,8 @@ public class UIManager : MonoBehaviour
         istakaController.SlotPrefab = SlotPrefab;
         istakaController.HandPanel = HandPanel;
         
+        tableView.TilePrefab = TilePrefab;
+        tableView.tableCenterContainer = TableCenterContainer;
         tableView.centerStone = GostergeTile;
         tableView.gostergeTileDisplay = GostergeTileDisplay;
         tableView.centerStoneText = centerStoneText;
