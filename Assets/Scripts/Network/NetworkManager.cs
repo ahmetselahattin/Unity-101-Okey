@@ -1,62 +1,76 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 using Photon.Pun;
 using Photon.Realtime;
 
 public class NetworkManager : MonoBehaviourPunCallbacks
 {
-    void Start()
-    {
-        Debug.Log("Sunucuya baðlanýlýyor...");
-        PhotonNetwork.ConnectUsingSettings();
+    public static NetworkManager Instance { get; private set; }
 
-        // ÇOK KRÝTÝK: Kurucu (Master Client) sahne deðiþtirdiðinde, odadaki herkes otomatik onunla o sahneye gitsin.
-        PhotonNetwork.AutomaticallySyncScene = true;
+    private const int MaxPlayersPerRoom = 4;
+    private const int GameSceneBuildIndex = 1;
+
+    private void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+        else if (Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+    }
+
+    private void Start()
+    {
+        if (!PhotonNetwork.IsConnected)
+        {
+            Debug.Log("[NetworkManager] Sunucuya baÄŸlanÄ±lÄ±yor...");
+            PhotonNetwork.ConnectUsingSettings();
+            PhotonNetwork.AutomaticallySyncScene = true;
+        }
     }
 
     public override void OnConnectedToMaster()
     {
-        Debug.Log("Master Server'a baðlanýldý! Lobiye geçiliyor...");
+        Debug.Log("[NetworkManager] Master Server'a baÄŸlanÄ±ldÄ±! Lobiye geÃ§iliyor...");
         PhotonNetwork.JoinLobby();
     }
 
     public override void OnJoinedLobby()
     {
-        Debug.Log("Lobiye girildi! Artýk butonlara basabilirsin.");
+        Debug.Log("[NetworkManager] Lobiye girildi.");
     }
-
-    // --- BUTONLARA BAÐLAYACAÐIMIZ FONKSÝYONLAR ---
 
     public void CreateRoom()
     {
-        Debug.Log("Oda kuruluyor...");
-        // Odaya rastgele bir isim veriyoruz, okey olduðu için maksimum 4 kiþi girebilir
-        RoomOptions roomOptions = new RoomOptions { MaxPlayers = 4 };
-        PhotonNetwork.CreateRoom("Masa_" + Random.Range(1000, 9999), roomOptions);
+        string roomName = "Masa_" + Random.Range(1000, 9999);
+        Debug.Log($"[NetworkManager] Oda kuruluyor: {roomName}");
+        RoomOptions roomOptions = new RoomOptions { MaxPlayers = MaxPlayersPerRoom };
+        PhotonNetwork.CreateRoom(roomName, roomOptions);
     }
 
     public void JoinRandomRoom()
     {
-        Debug.Log("Rastgele bir odaya katýlýnýyor...");
+        Debug.Log("[NetworkManager] Rastgele bir odaya katÄ±lÄ±nÄ±yor...");
         PhotonNetwork.JoinRandomRoom();
     }
 
-    // --- ODA (MASA) ÝÞLEMLERÝ ---
-
     public override void OnJoinedRoom()
     {
-        Debug.Log("Odaya baþarýyla girildi! Masadaki kiþi sayýsý: " + PhotonNetwork.CurrentRoom.PlayerCount);
+        Debug.Log($"[NetworkManager] Odaya girildi! Masadaki kiÅŸi sayÄ±sÄ±: {PhotonNetwork.CurrentRoom.PlayerCount}");
 
-        // Eðer odayý biz kurduysak (Master Client isek), oyun sahnesini biz yükleriz.
-        // Diðer oyuncular "AutomaticallySyncScene = true" komutu sayesinde otomatik olarak peþimizden gelir!
         if (PhotonNetwork.IsMasterClient)
         {
-            PhotonNetwork.LoadLevel(1); // Build Settings'deki 1 numaralý sahneyi (GameScene) yükle
+            PhotonNetwork.LoadLevel(GameSceneBuildIndex);
         }
     }
 
     public override void OnJoinRandomFailed(short returnCode, string message)
     {
-        Debug.Log("Boþ oda bulunamadý! Kendi masamýzý kuruyoruz...");
-        CreateRoom(); // Eðer girecek boþ masa yoksa, direkt kendi masamýzý kuralým
+        Debug.Log("[NetworkManager] BoÅŸ oda bulunamadÄ±! Yeni masa kuruluyor...");
+        CreateRoom();
     }
 }
