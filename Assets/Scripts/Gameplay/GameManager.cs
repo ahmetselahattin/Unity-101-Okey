@@ -96,7 +96,7 @@ public class GameManager : MonoBehaviour
         {
             int prevScore = (players[i] != null) ? players[i].TotalScore : 0;
             players[i] = new Player(i, i == 0 ? "Sen" : $"Bot_{i}", i != 0);
-            players[i].TotalScore = prevScore; // Kümülatif puanı koru
+            players[i].TotalScore = prevScore;
         }
 
         deckManager = new DeckManager();
@@ -170,6 +170,10 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Sol oyuncunun attığı taşı (yandan taş) alma işlemi.
+    /// Kural: Bu taş ile elinizi açabiliyor (101 barajı / 5 çift) veya masaya işleyebiliyor olmalısınız!
+    /// </summary>
     public void DrawTileFromLeftDiscard()
     {
         if (isGameOver || currentPlayerIndex != 0) return;
@@ -183,6 +187,13 @@ public class GameManager : MonoBehaviour
         if (lastDiscardedTileByLeftPlayer == null)
         {
             Debug.LogWarning("[GameManager] Yandan alınacak taş yok!");
+            return;
+        }
+
+        // 101 KURAL DOĞRULAMASI: Bu taşla el açılabilir veya işlenebilir mi?
+        if (!OkeyRuleEngine.CanDrawFromDiscard(players[0], lastDiscardedTileByLeftPlayer, deckManager.OkeyTile, tableMelds, out string ruleReason))
+        {
+            Debug.LogWarning($"[GameManager] {ruleReason}");
             return;
         }
 
@@ -201,7 +212,7 @@ public class GameManager : MonoBehaviour
             uiManager.SetLeftDiscardButtonState(false);
         }
 
-        Debug.Log($"[GameManager] Yandan taş alındı: {drawnTile}. (DİKKAT: Bu tur elinizi açmak zorundasınız!)");
+        Debug.Log($"[GameManager] Yandan taş başarıyla alındı: {drawnTile}. (DİKKAT: Bu tur elinizi açmak/işlemek zorundasınız!)");
     }
 
     public void OnAutoSortClicked()
@@ -318,6 +329,7 @@ public class GameManager : MonoBehaviour
             }
 
             players[0].RemoveTile(tile);
+            players[0].HasDrawnFromDiscard = false; // Yandan alınan taş işlendiyse kural sağlandı!
 
             if (uiManager != null)
             {
@@ -337,7 +349,9 @@ public class GameManager : MonoBehaviour
     {
         if (isGameOver || currentPlayerIndex != 0) return false;
         if (!hasDrawnTileThisTurn && !isFirstTurn) return false;
-        if (players[0].HasDrawnFromDiscard && !players[0].HasOpenedHand) return false;
+
+        // Yandan taş alıp elini açmamış / işlememiş oyuncu taş atamaz!
+        if (players[0].HasDrawnFromDiscard) return false;
 
         return true;
     }
@@ -346,7 +360,7 @@ public class GameManager : MonoBehaviour
     {
         if (!CanPlayerDiscard())
         {
-            Debug.LogError("[GameManager] KURAL İHLALİ: Taş atamazsınız!");
+            Debug.LogError("[GameManager] KURAL İHLALİ: Yandan taş aldığınız için bu tur elinizi açmak veya masaya işlemek zorundasınız! Taş atamazsınız.");
             if (uiManager != null)
             {
                 uiManager.RefreshHand(players[0].Hand);
@@ -378,7 +392,6 @@ public class GameManager : MonoBehaviour
     {
         isGameOver = true;
 
-        // 4. AŞAMA: PUANLAMA VE CEZA HESAPLAMA MOTORU
         List<PlayerScoreInfo> scores = ScoreEngine.CalculateScores(players, winner, finishType, deckManager.OkeyTile);
 
         string finishDesc = finishType switch
@@ -460,7 +473,6 @@ public class GameManager : MonoBehaviour
                         }
                     }
 
-                    // Botun el bitirme kontrolü
                     if (players[activePlayerIndex].Hand.Count == 0 && players[activePlayerIndex].HasOpenedHand)
                     {
                         bool isOkey = OkeyRuleEngine.IsOkeyTile(botDiscard, deckManager.OkeyTile);
