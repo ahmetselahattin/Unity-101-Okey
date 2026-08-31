@@ -21,6 +21,12 @@ public class TableView : MonoBehaviour
     [Header("Masa Ortası Açılan Perler Alanı")]
     public Transform tableCenterContainer;
 
+    private void Start()
+    {
+        // Oyun başında sol taş alma alanı boş başlasın
+        SetLeftDiscardTile(null, false);
+    }
+
     public void ShowGosterge(Tile gostergeTile)
     {
         if (centerStone != null) centerStone.SetActive(true);
@@ -54,12 +60,20 @@ public class TableView : MonoBehaviour
     {
         if (leftDiscardArea != null)
         {
-            leftDiscardArea.SetActive(tile != null);
+            leftDiscardArea.SetActive(true); // Kutu çerçevesi görünür kalsın
         }
 
-        if (leftDiscardTileDisplay != null && tile != null)
+        if (leftDiscardTileDisplay != null)
         {
-            leftDiscardTileDisplay.SetTile(tile);
+            if (tile == null)
+            {
+                leftDiscardTileDisplay.gameObject.SetActive(false); // Taş yoksa içini gizle
+            }
+            else
+            {
+                leftDiscardTileDisplay.gameObject.SetActive(true); // Taş atıldığında görünür yap
+                leftDiscardTileDisplay.SetTile(tile);
+            }
         }
 
         if (leftDiscardButton != null)
@@ -72,7 +86,7 @@ public class TableView : MonoBehaviour
     {
         if (leftDiscardButton != null)
         {
-            leftDiscardButton.interactable = isInteractable;
+            leftDiscardButton.interactable = isInteractable && (leftDiscardTileDisplay != null && leftDiscardTileDisplay.gameObject.activeSelf);
         }
     }
 

@@ -3,6 +3,13 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+public enum FinishType
+{
+    Normal,
+    Okey,
+    Pairs
+}
+
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
@@ -27,6 +34,9 @@ public class GameManager : MonoBehaviour
     public List<Meld> tableMelds = new List<Meld>();
     public Tile lastDiscardedTileByLeftPlayer = null;
     public bool hasDrawnTileThisTurn = false;
+    public bool isGameOver = false;
+
+    public event Action<Player, FinishType> OnGameFinished;
 
     public int currentPlayerIndex => turnManager != null ? turnManager.CurrentPlayerIndex : 0;
     public bool isFirstTurn => turnManager != null ? turnManager.IsFirstTurn : true;
@@ -74,6 +84,7 @@ public class GameManager : MonoBehaviour
     {
         Debug.Log("[GameManager] Oyun Başlıyor! Taşlar dağıtılıyor...");
 
+        isGameOver = false;
         if (inGameUI != null) inGameUI.SetActive(true);
         if (centerStone != null) centerStone.SetActive(true);
 
@@ -101,6 +112,7 @@ public class GameManager : MonoBehaviour
         if (uiManager != null)
         {
             uiManager.DrawPlayerHand(players[0].Hand);
+            uiManager.SetLeftDiscardTile(null, false);
         }
 
         if (turnManager != null)
@@ -130,11 +142,7 @@ public class GameManager : MonoBehaviour
 
     public void DrawTileFromDeck()
     {
-        if (currentPlayerIndex != 0)
-        {
-            Debug.LogWarning("[GameManager] Sıra sizde değil!");
-            return;
-        }
+        if (isGameOver || currentPlayerIndex != 0) return;
 
         if (hasDrawnTileThisTurn)
         {
@@ -161,11 +169,7 @@ public class GameManager : MonoBehaviour
 
     public void DrawTileFromLeftDiscard()
     {
-        if (currentPlayerIndex != 0)
-        {
-            Debug.LogWarning("[GameManager] Sıra sizde değil!");
-            return;
-        }
+        if (isGameOver || currentPlayerIndex != 0) return;
 
         if (hasDrawnTileThisTurn)
         {
@@ -211,7 +215,7 @@ public class GameManager : MonoBehaviour
 
     public void OnOpenHandClicked()
     {
-        if (uiManager == null || deckManager == null) return;
+        if (isGameOver || uiManager == null || deckManager == null) return;
 
         List<List<Tile>> rawMelds = uiManager.GetMeldsFromIstaka();
 
@@ -232,7 +236,7 @@ public class GameManager : MonoBehaviour
 
             players[0].HasOpenedHand = true;
             players[0].HasOpenedPairs = false;
-            players[0].HasDrawnFromDiscard = false; // Yandan taş alma şartı tamamlandı!
+            players[0].HasDrawnFromDiscard = false;
 
             foreach (var m in newOpenedMelds)
             {
@@ -253,7 +257,7 @@ public class GameManager : MonoBehaviour
 
     public void OnOpenPairsClicked()
     {
-        if (deckManager == null || players[0] == null) return;
+        if (isGameOver || deckManager == null || players[0] == null) return;
 
         if (OkeyRuleEngine.ValidateOpenPairs(players[0].Hand, deckManager.OkeyTile, out List<Meld> pairsToOpen, out string error))
         {
@@ -272,7 +276,7 @@ public class GameManager : MonoBehaviour
 
             players[0].HasOpenedHand = true;
             players[0].HasOpenedPairs = true;
-            players[0].HasDrawnFromDiscard = false; // Yandan taş alma şartı tamamlandı!
+            players[0].HasDrawnFromDiscard = false;
 
             if (uiManager != null)
             {
@@ -288,7 +292,7 @@ public class GameManager : MonoBehaviour
 
     public bool ProcessTileToTable(Tile tile, int meldIndex)
     {
-        if (!players[0].HasOpenedHand)
+        if (isGameOver || !players[0].HasOpenedHand)
         {
             Debug.LogWarning("[GameManager] Masaya taş işleyebilmek için önce elinizi açmış olmanız gerekir!");
             return false;
@@ -326,12 +330,9 @@ public class GameManager : MonoBehaviour
         return false;
     }
 
-    /// <summary>
-    /// Oyuncunun şu anda taş atma hakkı olup olmadığını doğrular.
-    /// </summary>
     public bool CanPlayerDiscard()
     {
-        if (currentPlayerIndex != 0) return false;
+        if (isGameOver || currentPlayerIndex != 0) return false;
         if (!hasDrawnTileThisTurn && !isFirstTurn) return false;
         if (players[0].HasDrawnFromDiscard && !players[0].HasOpenedHand) return false;
 
@@ -342,7 +343,7 @@ public class GameManager : MonoBehaviour
     {
         if (!CanPlayerDiscard())
         {
-            Debug.LogError("[GameManager] KURAL İHLALİ: Taş atamazsınız! (Önce taş çekmeli veya yandan taş aldıysanız elinizi açmalısınız).");
+            Debug.LogError("[GameManager] KURAL İHLALİ: Taş atamazsınız!");
             if (uiManager != null)
             {
                 uiManager.RefreshHand(players[0].Hand);
@@ -357,11 +358,45 @@ public class GameManager : MonoBehaviour
         }
 
         hasDrawnTileThisTurn = false;
+
+        // 3. AŞAMA: EL BİTİRME KONTROLÜ
+        if (players[0].Hand.Count == 0 && players[0].HasOpenedHand)
+        {
+            bool isOkey = OkeyRuleEngine.IsOkeyTile(discardedTile, deckManager.OkeyTile);
+            FinishType finish = isOkey ? FinishType.Okey : (players[0].HasOpenedPairs ? FinishType.Pairs : FinishType.Normal);
+            HandleGameFinished(players[0], finish);
+            return;
+        }
+
         EndTurn();
+    }
+
+    public void HandleGameFinished(Player winner, FinishType finishType)
+    {
+        isGameOver = true;
+
+        string finishDesc = finishType switch
+        {
+            FinishType.Okey => "OKEY ATARAK BİTTİ! (-202 Puan / 2 Kat Ceza)",
+            FinishType.Pairs => "ÇİFTTEN BİTTİ! (-202 Puan / 2 Kat Ceza)",
+            _ => "NORMAL BİTTİ! (-101 Puan)"
+        };
+
+        Debug.Log($"[GameManager] 🏆 OYUN BİTTİ! Kazanan: {winner.NickName} - Tür: {finishDesc}");
+
+        if (uiManager != null)
+        {
+            uiManager.SetDeckButtonState(false);
+            uiManager.SetLeftDiscardButtonState(false);
+        }
+
+        OnGameFinished?.Invoke(winner, finishType);
     }
 
     public void EndTurn()
     {
+        if (isGameOver) return;
+
         if (turnManager != null)
         {
             turnManager.NextTurn();
@@ -370,6 +405,8 @@ public class GameManager : MonoBehaviour
 
     private void HandleTurnChanged(int activePlayerIndex)
     {
+        if (isGameOver) return;
+
         if (activePlayerIndex == 0)
         {
             hasDrawnTileThisTurn = false;
@@ -414,6 +451,14 @@ public class GameManager : MonoBehaviour
                         {
                             uiManager.SetLeftDiscardTile(botDiscard, false);
                         }
+                    }
+
+                    // Botun el bitirme kontrolü
+                    if (players[activePlayerIndex].Hand.Count == 0 && players[activePlayerIndex].HasOpenedHand)
+                    {
+                        bool isOkey = OkeyRuleEngine.IsOkeyTile(botDiscard, deckManager.OkeyTile);
+                        FinishType finish = isOkey ? FinishType.Okey : FinishType.Normal;
+                        HandleGameFinished(players[activePlayerIndex], finish);
                     }
                 }, EndTurn));
             }

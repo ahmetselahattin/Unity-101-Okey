@@ -11,7 +11,7 @@ public class TileDisplay : MonoBehaviour, IPointerClickHandler
 
     [Header("Görsel Ayarlar")]
     public Color NormalTileBgColor = new Color(0.98f, 0.97f, 0.94f, 1f); // Krem taş rengi
-    public Color FlippedTileBgColor = new Color(0.38f, 0.24f, 0.14f, 1f); // Ahşap taş sırtı rengi
+    public Color FlippedTileBgColor = new Color(0.96f, 0.96f, 0.96f, 1f); // Düz bembeyaz taş sırtı
 
     public Tile tileData { get; private set; }
     public bool IsFlipped { get; private set; } = false;
