@@ -34,32 +34,19 @@ public class TableView : MonoBehaviour
 
         if (centerStoneText != null)
         {
+            centerStoneText.fontStyle = FontStyles.Bold;
+
             if (gostergeTile.IsFakeOkey)
             {
                 centerStoneText.text = "<b>SO</b>";
-                centerStoneText.color = new Color(0.15f, 0.15f, 0.15f, 1f);
+                centerStoneText.color = TileColorExtensions.BlackColor;
                 centerStoneText.fontSize = 28;
                 return;
             }
 
             centerStoneText.fontSize = 28;
             centerStoneText.text = gostergeTile.TileValue.ToString();
-
-            switch (gostergeTile.Color)
-            {
-                case TileColor.Red:
-                    centerStoneText.color = new Color(0.9f, 0.1f, 0.1f, 1f);
-                    break;
-                case TileColor.Black:
-                    centerStoneText.color = new Color(0.15f, 0.15f, 0.15f, 1f);
-                    break;
-                case TileColor.Blue:
-                    centerStoneText.color = new Color(0.1f, 0.45f, 0.95f, 1f);
-                    break;
-                case TileColor.Yellow:
-                    centerStoneText.color = new Color(0.95f, 0.65f, 0f, 1f);
-                    break;
-            }
+            centerStoneText.color = gostergeTile.Color.ToColor();
         }
     }
 
@@ -93,7 +80,6 @@ public class TableView : MonoBehaviour
     {
         if (tableCenterContainer == null) return;
 
-        // 1. Önceki açılan perleri temizle
         for (int i = tableCenterContainer.childCount - 1; i >= 0; i--)
         {
             Destroy(tableCenterContainer.GetChild(i).gameObject);
@@ -103,7 +89,6 @@ public class TableView : MonoBehaviour
 
         Debug.Log($"[TableView] Masanın ortasına toplam {melds.Count} adet per sergilendi.");
 
-        // 2. Her bir Meld için bir grup oluştur ve taşlarını yerleştir
         for (int mIndex = 0; mIndex < melds.Count; mIndex++)
         {
             Meld meld = melds[mIndex];
@@ -122,11 +107,9 @@ public class TableView : MonoBehaviour
             layout.childForceExpandWidth = false;
             layout.childForceExpandHeight = false;
 
-            // Taş işleme ve tıklama dinleyicisi
             MeldGroupUI groupUI = meldObj.AddComponent<MeldGroupUI>();
             groupUI.Initialize(mIndex, meld);
 
-            // Per içindeki taşları oluştur
             if (TilePrefab != null)
             {
                 foreach (Tile tile in meld.Tiles)
@@ -135,12 +118,11 @@ public class TableView : MonoBehaviour
                     tileObj.name = "TableTile_" + tile.TileValue;
                     tileObj.transform.localScale = new Vector3(0.85f, 0.85f, 1f);
 
-                    // Masadaki taşların sürüklenmesini engelle
                     DraggableTile dragComp = tileObj.GetComponent<DraggableTile>();
                     if (dragComp != null) Destroy(dragComp);
 
                     CanvasGroup cg = tileObj.GetComponent<CanvasGroup>();
-                    if (cg != null) cg.blocksRaycasts = false; // Tıklamalar üstteki MeldGroupUI'a geçsin
+                    if (cg != null) cg.blocksRaycasts = false;
 
                     TileDisplay display = tileObj.GetComponent<TileDisplay>();
                     if (display != null)
