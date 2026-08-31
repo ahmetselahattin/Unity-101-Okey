@@ -9,12 +9,18 @@ public class TileDisplay : MonoBehaviour, IPointerClickHandler
     public TextMeshProUGUI NumberText;
     public Image BackgroundImage;
 
-    [Header("Görsel Ayarlar")]
-    public Color NormalTileBgColor = new Color(0.98f, 0.97f, 0.94f, 1f); // Krem taş rengi
-    public Color FlippedTileBgColor = new Color(0.96f, 0.96f, 0.96f, 1f); // Düz bembeyaz taş sırtı
+    [Header("Görsel Renk Ayarları")]
+    public Color NormalTileBgColor = new Color(0.98f, 0.97f, 0.94f, 1f); // Doğal kemik/krem rengi
+    public Color FlippedTileBgColor = new Color(1f, 1f, 1f, 1f);          // Bembeyaz sayısız taş sırtı
 
     public Tile tileData { get; private set; }
     public bool IsFlipped { get; private set; } = false;
+
+    private void Awake()
+    {
+        if (BackgroundImage == null) BackgroundImage = GetComponent<Image>();
+        if (NumberText == null) NumberText = GetComponentInChildren<TextMeshProUGUI>();
+    }
 
     public void SetTile(Tile data)
     {
@@ -37,11 +43,15 @@ public class TileDisplay : MonoBehaviour, IPointerClickHandler
     {
         IsFlipped = !IsFlipped;
         UpdateVisuals();
+        Debug.Log($"[TileDisplay] Taş ters çevrildi. Durum: {(IsFlipped ? "Ters (Bembeyaz/Boş)" : "Düz")}");
     }
 
     private void UpdateVisuals()
     {
         if (tileData == null) return;
+
+        if (BackgroundImage == null) BackgroundImage = GetComponent<Image>();
+        if (NumberText == null) NumberText = GetComponentInChildren<TextMeshProUGUI>();
 
         if (BackgroundImage != null)
         {
