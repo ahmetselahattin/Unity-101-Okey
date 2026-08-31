@@ -130,6 +130,12 @@ public class GameManager : MonoBehaviour
 
     public void DrawTileFromDeck()
     {
+        if (currentPlayerIndex != 0)
+        {
+            Debug.LogWarning("[GameManager] Sıra sizde değil!");
+            return;
+        }
+
         if (hasDrawnTileThisTurn)
         {
             Debug.LogWarning("[GameManager] Bu tur zaten taş çektiniz!");
@@ -155,6 +161,12 @@ public class GameManager : MonoBehaviour
 
     public void DrawTileFromLeftDiscard()
     {
+        if (currentPlayerIndex != 0)
+        {
+            Debug.LogWarning("[GameManager] Sıra sizde değil!");
+            return;
+        }
+
         if (hasDrawnTileThisTurn)
         {
             Debug.LogWarning("[GameManager] Bu tur zaten taş çektiniz!");
@@ -197,9 +209,6 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// 101 Barajı ve Seri/Grup perleri doğrulayarak el açma işlemi.
-    /// </summary>
     public void OnOpenHandClicked()
     {
         if (uiManager == null || deckManager == null) return;
@@ -223,7 +232,7 @@ public class GameManager : MonoBehaviour
 
             players[0].HasOpenedHand = true;
             players[0].HasOpenedPairs = false;
-            players[0].HasDrawnFromDiscard = false;
+            players[0].HasDrawnFromDiscard = false; // Yandan taş alma şartı tamamlandı!
 
             foreach (var m in newOpenedMelds)
             {
@@ -242,9 +251,6 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// En az 5 çift (10 taş) ile çift açma işlemi.
-    /// </summary>
     public void OnOpenPairsClicked()
     {
         if (deckManager == null || players[0] == null) return;
@@ -266,7 +272,7 @@ public class GameManager : MonoBehaviour
 
             players[0].HasOpenedHand = true;
             players[0].HasOpenedPairs = true;
-            players[0].HasDrawnFromDiscard = false;
+            players[0].HasDrawnFromDiscard = false; // Yandan taş alma şartı tamamlandı!
 
             if (uiManager != null)
             {
@@ -280,9 +286,6 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Masada daha önce açılmış olan bir pere taş işleme (ekleme) işlemi.
-    /// </summary>
     public bool ProcessTileToTable(Tile tile, int meldIndex)
     {
         if (!players[0].HasOpenedHand)
@@ -323,11 +326,23 @@ public class GameManager : MonoBehaviour
         return false;
     }
 
+    /// <summary>
+    /// Oyuncunun şu anda taş atma hakkı olup olmadığını doğrular.
+    /// </summary>
+    public bool CanPlayerDiscard()
+    {
+        if (currentPlayerIndex != 0) return false;
+        if (!hasDrawnTileThisTurn && !isFirstTurn) return false;
+        if (players[0].HasDrawnFromDiscard && !players[0].HasOpenedHand) return false;
+
+        return true;
+    }
+
     public void OnPlayerDiscardTile(Tile discardedTile)
     {
-        if (players[0].HasDrawnFromDiscard)
+        if (!CanPlayerDiscard())
         {
-            Debug.LogError("[GameManager] KURAL İHLALİ: Yandan taş aldığınız için bu tur elinizi açmak zorundasınız!");
+            Debug.LogError("[GameManager] KURAL İHLALİ: Taş atamazsınız! (Önce taş çekmeli veya yandan taş aldıysanız elinizi açmalısınız).");
             if (uiManager != null)
             {
                 uiManager.RefreshHand(players[0].Hand);
@@ -375,6 +390,7 @@ public class GameManager : MonoBehaviour
                 {
                     uiManager.SetDeckButtonState(true);
                     bool canDrawLeft = (lastDiscardedTileByLeftPlayer != null);
+                    uiManager.SetLeftDiscardTile(lastDiscardedTileByLeftPlayer, canDrawLeft);
                     uiManager.SetLeftDiscardButtonState(canDrawLeft);
                 }
             }

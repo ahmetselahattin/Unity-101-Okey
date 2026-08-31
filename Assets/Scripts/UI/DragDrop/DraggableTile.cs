@@ -93,8 +93,8 @@ public class DraggableTile : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
             Destroy(placeholder);
         }
 
-        // Ta atma alan kontrol (RightDiscardArea veya DropZone)
-        bool isDiscardArea = (ParentToReturnTo != null && (ParentToReturnTo.name == "RightDiscardArea" || ParentToReturnTo.GetComponent<DropZone>() != null));
+        // Eğer sağ taş atma bölgesine bırakıldıysa taşı oraya kilitle
+        bool isDiscardArea = (ParentToReturnTo != null && (ParentToReturnTo.name == "RightDiscardArea" || (ParentToReturnTo.GetComponent<DropZone>() != null && ParentToReturnTo.GetComponent<DropZone>().isRightDiscardZone)));
 
         if (isDiscardArea)
         {
@@ -104,13 +104,8 @@ public class DraggableTile : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
                 canvasGroup.interactable = false;
             }
 
-            TileDisplay tileDisplay = GetComponent<TileDisplay>();
-            Tile discardedTile = tileDisplay != null ? tileDisplay.tileData : null;
-
-            if (GameManager.Instance != null)
-            {
-                GameManager.Instance.OnPlayerDiscardTile(discardedTile);
-            }
+            // Atılan taşın tekrar sürüklenmesini engelle
+            Destroy(this);
         }
         else
         {
