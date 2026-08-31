@@ -36,7 +36,7 @@ public class GameManager : MonoBehaviour
     public bool hasDrawnTileThisTurn = false;
     public bool isGameOver = false;
 
-    public event Action<Player, FinishType> OnGameFinished;
+    public event Action<Player, FinishType, List<PlayerScoreInfo>> OnGameFinished;
 
     public int currentPlayerIndex => turnManager != null ? turnManager.CurrentPlayerIndex : 0;
     public bool isFirstTurn => turnManager != null ? turnManager.IsFirstTurn : true;
@@ -94,7 +94,9 @@ public class GameManager : MonoBehaviour
 
         for (int i = 0; i < 4; i++)
         {
+            int prevScore = (players[i] != null) ? players[i].TotalScore : 0;
             players[i] = new Player(i, i == 0 ? "Sen" : $"Bot_{i}", i != 0);
+            players[i].TotalScore = prevScore; // Kümülatif puanı koru
         }
 
         deckManager = new DeckManager();
@@ -113,6 +115,7 @@ public class GameManager : MonoBehaviour
         {
             uiManager.DrawPlayerHand(players[0].Hand);
             uiManager.SetLeftDiscardTile(null, false);
+            if (uiManager.scoreboardUI != null) uiManager.scoreboardUI.Hide();
         }
 
         if (turnManager != null)
@@ -359,7 +362,7 @@ public class GameManager : MonoBehaviour
 
         hasDrawnTileThisTurn = false;
 
-        // 3. AŞAMA: EL BİTİRME KONTROLÜ
+        // EL BİTİRME KONTROLÜ
         if (players[0].Hand.Count == 0 && players[0].HasOpenedHand)
         {
             bool isOkey = OkeyRuleEngine.IsOkeyTile(discardedTile, deckManager.OkeyTile);
@@ -375,6 +378,9 @@ public class GameManager : MonoBehaviour
     {
         isGameOver = true;
 
+        // 4. AŞAMA: PUANLAMA VE CEZA HESAPLAMA MOTORU
+        List<PlayerScoreInfo> scores = ScoreEngine.CalculateScores(players, winner, finishType, deckManager.OkeyTile);
+
         string finishDesc = finishType switch
         {
             FinishType.Okey => "OKEY ATARAK BİTTİ! (-202 Puan / 2 Kat Ceza)",
@@ -388,9 +394,10 @@ public class GameManager : MonoBehaviour
         {
             uiManager.SetDeckButtonState(false);
             uiManager.SetLeftDiscardButtonState(false);
+            uiManager.ShowScoreboard(winner, finishType, scores);
         }
 
-        OnGameFinished?.Invoke(winner, finishType);
+        OnGameFinished?.Invoke(winner, finishType, scores);
     }
 
     public void EndTurn()

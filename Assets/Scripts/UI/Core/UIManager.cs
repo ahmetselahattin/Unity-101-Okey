@@ -27,6 +27,7 @@ public class UIManager : MonoBehaviour
     [Header("Alt Kontrolcüler")]
     public IstakaController istakaController;
     public TableView tableView;
+    public ScoreboardUI scoreboardUI;
 
     private void Awake()
     {
@@ -40,6 +41,11 @@ public class UIManager : MonoBehaviour
         {
             tableView = GetComponent<TableView>();
             if (tableView == null) tableView = gameObject.AddComponent<TableView>();
+        }
+
+        if (scoreboardUI == null)
+        {
+            scoreboardUI = GetComponent<ScoreboardUI>();
         }
 
         istakaController.TilePrefab = TilePrefab;
@@ -62,6 +68,11 @@ public class UIManager : MonoBehaviour
         if (istakaController != null)
         {
             istakaController.Initialize();
+        }
+
+        if (scoreboardUI != null)
+        {
+            scoreboardUI.Hide();
         }
     }
 
@@ -126,6 +137,14 @@ public class UIManager : MonoBehaviour
         if (tableView != null)
         {
             tableView.DrawOpenedMelds(melds);
+        }
+    }
+
+    public void ShowScoreboard(Player winner, FinishType finishType, List<PlayerScoreInfo> scores)
+    {
+        if (scoreboardUI != null)
+        {
+            scoreboardUI.ShowScores(winner, finishType, scores);
         }
     }
 
