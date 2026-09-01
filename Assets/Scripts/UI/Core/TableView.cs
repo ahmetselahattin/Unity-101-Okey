@@ -18,8 +18,12 @@ public class TableView : MonoBehaviour
     public TileDisplay leftDiscardTileDisplay;
     public Button leftDiscardButton;
 
-    [Header("Masa Ortası Açılan Perler Alanı")]
-    public Transform tableCenterContainer;
+    [Header("Masa Ortası Açılan Taşlar Alanları")]
+    public Transform tableCenterContainer; // Seri ve Grup perleri için çok satırlı grid alanı
+    public Transform tablePairsContainer;  // Sağ tarafta sadece çift açanlar için alan
+
+    private const float MaxRowWidth = 1220f;
+    private const float MeldSpacing = 16f;
 
     private void Start()
     {
@@ -93,70 +97,162 @@ public class TableView : MonoBehaviour
 
     public void DrawOpenedMelds(List<Meld> melds)
     {
-        if (tableCenterContainer == null) return;
-
-        for (int i = tableCenterContainer.childCount - 1; i >= 0; i--)
-        {
-            Destroy(tableCenterContainer.GetChild(i).gameObject);
-        }
+        ClearContainer(tableCenterContainer);
+        ClearContainer(tablePairsContainer);
 
         if (melds == null || melds.Count == 0) return;
 
-        Debug.Log($"[TableView] Masanın ortasına toplam {melds.Count} adet per sergilendi.");
+        Debug.Log($"[TableView] Masaya toplam {melds.Count} adet per sergileniyor.");
+
+        // 1. Seri & Grup Perleri için Satır Yöneticisi
+        GameObject currentRowObj = null;
+        float currentRowWidth = 0f;
+        int rowIndex = 0;
 
         for (int mIndex = 0; mIndex < melds.Count; mIndex++)
         {
             Meld meld = melds[mIndex];
 
-            // Her per için şık bir çerçeve grubu oluştur
-            GameObject meldObj = new GameObject("MeldGroup_" + mIndex);
-            meldObj.transform.SetParent(tableCenterContainer, false);
-
-            RectTransform meldRect = meldObj.AddComponent<RectTransform>();
-            meldRect.sizeDelta = new Vector2((meld.Tiles.Count * 46) + 16, 74);
-
-            Image bgImg = meldObj.AddComponent<Image>();
-            bgImg.color = new Color(0.10f, 0.12f, 0.15f, 0.88f); // Koyu şık çerçeve
-
-            HorizontalLayoutGroup layout = meldObj.AddComponent<HorizontalLayoutGroup>();
-            layout.padding = new RectOffset(6, 6, 4, 4);
-            layout.spacing = 3;
-            layout.childAlignment = TextAnchor.MiddleCenter;
-            layout.childControlWidth = false;
-            layout.childControlHeight = false;
-            layout.childForceExpandWidth = false;
-            layout.childForceExpandHeight = false;
-
-            MeldGroupUI groupUI = meldObj.AddComponent<MeldGroupUI>();
-            groupUI.Initialize(mIndex, meld);
-
-            if (TilePrefab != null)
+            // ── ÇİFT PERLERİ (SAĞ BÖLÜMDEKİ ÇİFTLER ALANINA) ──
+            if (meld.Type == MeldType.Pair)
             {
-                foreach (Tile tile in meld.Tiles)
+                if (tablePairsContainer != null)
                 {
-                    GameObject tileObj = Instantiate(TilePrefab, meldObj.transform);
-                    tileObj.name = "TableTile_" + tile.TileValue;
-
-                    RectTransform rt = tileObj.GetComponent<RectTransform>();
-                    if (rt != null)
-                    {
-                        rt.sizeDelta = new Vector2(42, 62);
-                    }
-
-                    DraggableTile dragComp = tileObj.GetComponent<DraggableTile>();
-                    if (dragComp != null) Destroy(dragComp);
-
-                    CanvasGroup cg = tileObj.GetComponent<CanvasGroup>();
-                    if (cg != null) cg.blocksRaycasts = false;
-
-                    TileDisplay display = tileObj.GetComponent<TileDisplay>();
-                    if (display != null)
-                    {
-                        display.CanFlip = false;
-                        display.SetTile(tile);
-                    }
+                    CreatePairUI(meld, mIndex, tablePairsContainer);
                 }
+                continue;
             }
+
+            // ── SERİ VE GRUP PERLERİ (SOL/ORTA ÇOK SATIRLI ALANA) ──
+            if (tableCenterContainer == null) continue;
+
+            float meldWidth = (meld.Tiles.Count * 44f) + 16f;
+
+            if (currentRowObj == null || (currentRowWidth + meldWidth + MeldSpacing) > MaxRowWidth)
+            {
+                currentRowObj = CreateNewRow(tableCenterContainer, rowIndex++);
+                currentRowWidth = 0f;
+            }
+
+            CreateMeldUI(meld, mIndex, currentRowObj.transform, meldWidth);
+            currentRowWidth += meldWidth + MeldSpacing;
+        }
+    }
+
+    private void ClearContainer(Transform container)
+    {
+        if (container == null) return;
+        for (int i = container.childCount - 1; i >= 0; i--)
+        {
+            Destroy(container.GetChild(i).gameObject);
+        }
+    }
+
+    private GameObject CreateNewRow(Transform parent, int index)
+    {
+        GameObject row = new GameObject("MeldRow_" + index);
+        row.transform.SetParent(parent, false);
+
+        RectTransform rt = row.AddComponent<RectTransform>();
+        rt.sizeDelta = new Vector2(MaxRowWidth, 74f);
+
+        HorizontalLayoutGroup layout = row.AddComponent<HorizontalLayoutGroup>();
+        layout.spacing = MeldSpacing;
+        layout.childAlignment = TextAnchor.MiddleLeft;
+        layout.childControlWidth = false;
+        layout.childControlHeight = false;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+
+        return row;
+    }
+
+    private void CreateMeldUI(Meld meld, int mIndex, Transform parentRow, float meldWidth)
+    {
+        GameObject meldObj = new GameObject("Meld_" + mIndex);
+        meldObj.transform.SetParent(parentRow, false);
+
+        RectTransform meldRect = meldObj.AddComponent<RectTransform>();
+        meldRect.sizeDelta = new Vector2(meldWidth, 70f);
+
+        Image bgImg = meldObj.AddComponent<Image>();
+        bgImg.color = new Color(0.08f, 0.10f, 0.13f, 0.90f); // Koyu şık çerçeve
+
+        HorizontalLayoutGroup layout = meldObj.AddComponent<HorizontalLayoutGroup>();
+        layout.padding = new RectOffset(6, 6, 4, 4);
+        layout.spacing = 3f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = false;
+        layout.childControlHeight = false;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+
+        MeldGroupUI groupUI = meldObj.AddComponent<MeldGroupUI>();
+        groupUI.Initialize(mIndex, meld);
+
+        if (TilePrefab != null)
+        {
+            foreach (Tile tile in meld.Tiles)
+            {
+                CreateTileInMeld(tile, meldObj.transform, new Vector2(40f, 60f));
+            }
+        }
+    }
+
+    private void CreatePairUI(Meld pairMeld, int mIndex, Transform parentContainer)
+    {
+        GameObject pairObj = new GameObject("Pair_" + mIndex);
+        pairObj.transform.SetParent(parentContainer, false);
+
+        RectTransform pairRect = pairObj.AddComponent<RectTransform>();
+        pairRect.sizeDelta = new Vector2(90f, 66f);
+
+        Image bgImg = pairObj.AddComponent<Image>();
+        bgImg.color = new Color(0.12f, 0.08f, 0.16f, 0.92f); // Çiftler için özel morumsu/koyu çerçeve
+
+        HorizontalLayoutGroup layout = pairObj.AddComponent<HorizontalLayoutGroup>();
+        layout.padding = new RectOffset(4, 4, 3, 3);
+        layout.spacing = 3f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = false;
+        layout.childControlHeight = false;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+
+        MeldGroupUI groupUI = pairObj.AddComponent<MeldGroupUI>();
+        groupUI.Initialize(mIndex, pairMeld);
+
+        if (TilePrefab != null)
+        {
+            foreach (Tile tile in pairMeld.Tiles)
+            {
+                CreateTileInMeld(tile, pairObj.transform, new Vector2(38f, 58f));
+            }
+        }
+    }
+
+    private void CreateTileInMeld(Tile tile, Transform parent, Vector2 size)
+    {
+        GameObject tileObj = Instantiate(TilePrefab, parent);
+        tileObj.name = "TableTile_" + tile.TileValue;
+
+        RectTransform rt = tileObj.GetComponent<RectTransform>();
+        if (rt != null)
+        {
+            rt.sizeDelta = size;
+        }
+
+        DraggableTile dragComp = tileObj.GetComponent<DraggableTile>();
+        if (dragComp != null) Destroy(dragComp);
+
+        CanvasGroup cg = tileObj.GetComponent<CanvasGroup>();
+        if (cg != null) cg.blocksRaycasts = false;
+
+        TileDisplay display = tileObj.GetComponent<TileDisplay>();
+        if (display != null)
+        {
+            display.CanFlip = false;
+            display.SetTile(tile);
         }
     }
 }
