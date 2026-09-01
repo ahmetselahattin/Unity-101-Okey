@@ -10,7 +10,8 @@ public enum FinishType
 {
     Normal,
     Okey,
-    Pairs
+    Pairs,
+    DeckOut
 }
 
 public class GameManager : MonoBehaviourPunCallbacks
@@ -231,21 +232,33 @@ public class GameManager : MonoBehaviourPunCallbacks
             return;
         }
 
-        if (deckManager != null && deckManager.RemainingCount > 0)
+        // DESTE BİTTİ Mİ KONTROLÜ
+        if (deckManager == null || deckManager.RemainingCount <= 0)
         {
-            Tile drawnTile = deckManager.DrawTile();
-            players[localSeatIndex].AddTile(drawnTile);
-            hasDrawnTileThisTurn = true;
-
-            if (uiManager != null)
+            Debug.Log("[GameManager] Destedeki tüm taşlar bitti! Oyun sona eriyor...");
+            if (isOnlineGame)
             {
-                uiManager.AddSingleTileToHand(drawnTile);
-                uiManager.SetDeckButtonState(false);
-                uiManager.SetLeftDiscardButtonState(false);
+                photonView.RPC(nameof(RPC_OnGameFinished), RpcTarget.All, -1, (int)FinishType.DeckOut);
             }
-
-            Debug.Log($"[GameManager] Desteden taş çekildi: {drawnTile}");
+            else
+            {
+                HandleGameFinished(null, FinishType.DeckOut);
+            }
+            return;
         }
+
+        Tile drawnTile = deckManager.DrawTile();
+        players[localSeatIndex].AddTile(drawnTile);
+        hasDrawnTileThisTurn = true;
+
+        if (uiManager != null)
+        {
+            uiManager.AddSingleTileToHand(drawnTile);
+            uiManager.SetDeckButtonState(false);
+            uiManager.SetLeftDiscardButtonState(false);
+        }
+
+        Debug.Log($"[GameManager] Desteden taş çekildi: {drawnTile}. (Kalan deste: {deckManager.RemainingCount})");
     }
 
     public void DrawTileFromLeftDiscard()
@@ -276,6 +289,7 @@ public class GameManager : MonoBehaviourPunCallbacks
 
         players[localSeatIndex].AddTile(leftTile);
         players[localSeatIndex].HasDrawnFromDiscard = true;
+        players[localSeatIndex].DrawnDiscardTile = leftTile; // Soldan çekilen taşı kaydet
         hasDrawnTileThisTurn = true;
 
         if (uiManager != null)
@@ -286,7 +300,7 @@ public class GameManager : MonoBehaviourPunCallbacks
             uiManager.SetLeftDiscardButtonState(false);
         }
 
-        Debug.Log($"[GameManager] Yandan taş alındı: {leftTile}. (Bu tur elinizi açmak/işlemek zorundasınız!)");
+        Debug.Log($"[GameManager] Yandan taş başarıyla alındı: {leftTile}. (ZORUNLU KURAL: Bu tur bu taşı per içinde kullanarak elinizi açmak veya masaya işlemek zorundasınız!)");
     }
 
     public void OnAutoSortClicked()
@@ -305,7 +319,6 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         if (isGameOver || uiManager == null || deckManager == null) return;
 
-        // 1. Önce oyuncunun ıstakada boşluk bırakarak dizdiği özel perleri kontrol et
         List<List<Tile>> rawMelds = uiManager.GetMeldsFromIstaka();
         bool manualValid = OkeyRuleEngine.ValidateOpenHand(rawMelds, deckManager.OkeyTile, out int totalPoints, out string manualError);
 
@@ -319,7 +332,6 @@ public class GameManager : MonoBehaviourPunCallbacks
         }
         else
         {
-            // 2. Eğer ıstakada boşluk bırakılmamışsa eldeki tüm taşlardan en iyi perleri otomatik bul
             OkeyRuleEngine.FindOptimalMelds(players[localSeatIndex].Hand, deckManager.OkeyTile, out int autoPoints, out List<List<Tile>> autoMelds);
 
             if (autoPoints >= OkeyRuleEngine.OpenHandThreshold && autoMelds.Count > 0)
@@ -330,6 +342,26 @@ public class GameManager : MonoBehaviourPunCallbacks
             else
             {
                 Debug.LogWarning($"[GameManager] El açma başarısız: 101 barajı aşılamadı! (Eldeki en yüksek per puanı: {autoPoints} / Gerekli: 101)");
+                return;
+            }
+        }
+
+        // YANDAN TAŞ ALINDIĞINDA O TAŞI KULLANMA ŞARTI KONTROLÜ
+        if (players[localSeatIndex].HasDrawnFromDiscard && players[localSeatIndex].DrawnDiscardTile != null)
+        {
+            bool usedDrawnTile = false;
+            foreach (var m in meldsToOpen)
+            {
+                if (m.Exists(t => t == players[localSeatIndex].DrawnDiscardTile || t.IsSame(players[localSeatIndex].DrawnDiscardTile)))
+                {
+                    usedDrawnTile = true;
+                    break;
+                }
+            }
+
+            if (!usedDrawnTile)
+            {
+                Debug.LogError($"[GameManager] KURAL İHLALİ: Soldan aldığınız {players[localSeatIndex].DrawnDiscardTile} taşını açtığınız perlerin içinde kullanmak zorundasınız! Bu taş olmadan el açamazsınız.");
                 return;
             }
         }
@@ -357,6 +389,7 @@ public class GameManager : MonoBehaviourPunCallbacks
             players[localSeatIndex].HasOpenedHand = true;
             players[localSeatIndex].HasOpenedPairs = false;
             players[localSeatIndex].HasDrawnFromDiscard = false;
+            players[localSeatIndex].DrawnDiscardTile = null;
 
             uiManager.RefreshHand(players[localSeatIndex].Hand);
             uiManager.DrawOpenedMeldsOnTable(tableMelds);
@@ -374,6 +407,26 @@ public class GameManager : MonoBehaviourPunCallbacks
 
         if (OkeyRuleEngine.ValidateOpenPairs(players[localSeatIndex].Hand, deckManager.OkeyTile, out List<Meld> pairsToOpen, out string error))
         {
+            // Yandan taş alındıysa çiftlerin içinde kullanıldı mı?
+            if (players[localSeatIndex].HasDrawnFromDiscard && players[localSeatIndex].DrawnDiscardTile != null)
+            {
+                bool usedDrawnTile = false;
+                foreach (var p in pairsToOpen)
+                {
+                    if (p.Tiles.Exists(t => t == players[localSeatIndex].DrawnDiscardTile || t.IsSame(players[localSeatIndex].DrawnDiscardTile)))
+                    {
+                        usedDrawnTile = true;
+                        break;
+                    }
+                }
+
+                if (!usedDrawnTile)
+                {
+                    Debug.LogError($"[GameManager] KURAL İHLALİ: Soldan aldığınız {players[localSeatIndex].DrawnDiscardTile} taşını açtığınız çiftlerin içinde kullanmak zorundasınız!");
+                    return;
+                }
+            }
+
             Debug.Log($"[GameManager] Tebrikler! {pairsToOpen.Count} çift ile el masaya açılıyor.");
 
             foreach (var pairMeld in pairsToOpen)
@@ -390,6 +443,7 @@ public class GameManager : MonoBehaviourPunCallbacks
             players[localSeatIndex].HasOpenedHand = true;
             players[localSeatIndex].HasOpenedPairs = true;
             players[localSeatIndex].HasDrawnFromDiscard = false;
+            players[localSeatIndex].DrawnDiscardTile = null;
 
             if (uiManager != null)
             {
@@ -427,7 +481,14 @@ public class GameManager : MonoBehaviourPunCallbacks
             else targetMeld.Tiles.Add(tile);
 
             players[localSeatIndex].RemoveTile(tile);
-            players[localSeatIndex].HasDrawnFromDiscard = false;
+
+            // Eğer işlenen taş yandan çekilen taş ise kural yerine getirildi
+            if (players[localSeatIndex].HasDrawnFromDiscard && 
+                (tile == players[localSeatIndex].DrawnDiscardTile || tile.IsSame(players[localSeatIndex].DrawnDiscardTile)))
+            {
+                players[localSeatIndex].HasDrawnFromDiscard = false;
+                players[localSeatIndex].DrawnDiscardTile = null;
+            }
 
             if (uiManager != null)
             {
@@ -452,6 +513,8 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         if (isGameOver || currentPlayerIndex != localSeatIndex) return false;
         if (!hasDrawnTileThisTurn && !isFirstTurn) return false;
+
+        // Yandan taş alıp o taşı kullanmayan/açmayan oyuncu taş atamaz!
         if (players[localSeatIndex].HasDrawnFromDiscard) return false;
 
         return true;
@@ -461,7 +524,7 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         if (!CanPlayerDiscard())
         {
-            Debug.LogError("[GameManager] KURAL İHLALİ: Taş atamazsınız!");
+            Debug.LogError("[GameManager] KURAL İHLALİ: Soldan taş aldığınız için bu tur o taşı kullanarak elinizi açmak veya masaya işlemek zorundasınız! Taş atamazsınız.");
             if (uiManager != null)
             {
                 uiManager.RefreshHand(players[localSeatIndex].Hand);
@@ -521,10 +584,27 @@ public class GameManager : MonoBehaviourPunCallbacks
         {
             FinishType.Okey => "OKEY ATARAK BİTTİ! (-202 Puan / 2 Kat Ceza)",
             FinishType.Pairs => "ÇİFTTEN BİTTİ! (-202 Puan / 2 Kat Ceza)",
+            FinishType.DeckOut => "DESTEDEKİ TAŞLAR BİTTİ! (Ortada Taş Kalmadı)",
             _ => "NORMAL BİTTİ! (-101 Puan)"
         };
 
-        Debug.Log($"[GameManager] 🏆 OYUN BİTTİ! Kazanan: {winner.NickName} - Tür: {finishDesc}");
+        // KONSOLA AYRINTILI CEZA VE SKOR RAPORU YAZDIRMA
+        StringBuilder sb = new StringBuilder();
+        sb.AppendLine("\n=======================================================");
+        sb.AppendLine($"🏆 [101 OKEY EL SONU VE CEZA RAPORU]");
+        sb.AppendLine($"Sonuç Türü: {finishDesc}");
+        if (winner != null) sb.AppendLine($"Kazanan: {winner.NickName}");
+        sb.AppendLine("-------------------------------------------------------");
+
+        foreach (var sc in scores)
+        {
+            string status = sc.IsWinner ? "🏆 KAZANDI" : (sc.HasOpenedHand ? "Açtı (Kalan Taş Sayıldı)" : "AÇAMADI (+101/202)");
+            string sign = sc.RoundPenalty > 0 ? $"+{sc.RoundPenalty}" : $"{sc.RoundPenalty}";
+            sb.AppendLine($"• Koltuk {sc.SeatIndex + 1} ({sc.NickName}) => Durum: {status} | Bu Tur Ceza: {sign} Puan | Genel Toplam: {sc.CumulativeScore}");
+        }
+        sb.AppendLine("=======================================================\n");
+
+        Debug.Log(sb.ToString());
 
         if (uiManager != null)
         {
@@ -539,6 +619,14 @@ public class GameManager : MonoBehaviourPunCallbacks
     public void EndTurn()
     {
         if (isGameOver) return;
+
+        // Destedeki taş kontrolü
+        if (deckManager != null && deckManager.RemainingCount <= 0)
+        {
+            Debug.Log("[GameManager] Deste tükendi, oyun bitiyor.");
+            HandleGameFinished(null, FinishType.DeckOut);
+            return;
+        }
 
         if (turnManager != null)
         {
@@ -568,7 +656,7 @@ public class GameManager : MonoBehaviourPunCallbacks
                 Debug.Log("[GameManager] Senin sıran! Desteden veya sol oyuncunun attığı taştan çek.");
                 if (uiManager != null)
                 {
-                    uiManager.SetDeckButtonState(true);
+                    uiManager.SetDeckButtonState(deckManager != null && deckManager.RemainingCount > 0);
                     Tile leftTile = lastDiscardedTileByLeftPlayer;
                     bool canDrawLeft = (leftTile != null && OkeyRuleEngine.CanDrawFromDiscard(players[localSeatIndex], leftTile, deckManager?.OkeyTile, tableMelds, out _));
                     uiManager.SetLeftDiscardTile(leftTile, canDrawLeft);
@@ -745,6 +833,7 @@ public class GameManager : MonoBehaviourPunCallbacks
     public void RPC_OnGameFinished(int winnerSeatIndex, int finishTypeInt)
     {
         FinishType finish = (FinishType)finishTypeInt;
-        HandleGameFinished(players[winnerSeatIndex], finish);
+        Player winner = (winnerSeatIndex >= 0 && winnerSeatIndex < 4) ? players[winnerSeatIndex] : null;
+        HandleGameFinished(winner, finish);
     }
 }

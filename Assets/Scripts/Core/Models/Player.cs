@@ -10,6 +10,7 @@ public class Player
     public bool HasOpenedHand;
     public bool HasOpenedPairs;
     public bool HasDrawnFromDiscard;
+    public Tile DrawnDiscardTile; // Yandan çekilen taşın referansı
     public int TotalScore;
 
     public List<Tile> Hand { get; private set; }
@@ -25,6 +26,7 @@ public class Player
         HasOpenedHand = false;
         HasOpenedPairs = false;
         HasDrawnFromDiscard = false;
+        DrawnDiscardTile = null;
         TotalScore = 0;
         Hand = new List<Tile>();
         OpenedMelds = new List<Meld>();
@@ -57,5 +59,6 @@ public class Player
         HasOpenedHand = false;
         HasOpenedPairs = false;
         HasDrawnFromDiscard = false;
+        DrawnDiscardTile = null;
     }
 }

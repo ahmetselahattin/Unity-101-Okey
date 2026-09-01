@@ -21,6 +21,7 @@ public static class ScoreEngine
         if (players == null) return results;
 
         bool isDoublePenalty = (finishType == FinishType.Okey || finishType == FinishType.Pairs);
+        bool isDeckOut = (finishType == FinishType.DeckOut || winner == null);
 
         for (int i = 0; i < players.Length; i++)
         {
@@ -32,7 +33,7 @@ public static class ScoreEngine
                 SeatIndex = p.SeatIndex,
                 NickName = p.NickName,
                 HasOpenedHand = p.HasOpenedHand,
-                IsWinner = (p == winner)
+                IsWinner = (!isDeckOut && p == winner)
             };
 
             if (info.IsWinner)
@@ -45,7 +46,7 @@ public static class ScoreEngine
             {
                 if (!p.HasOpenedHand)
                 {
-                    // Elini hiç açamamış oyuncu sabit baraj cezası alır
+                    // Elini hiç açamamış oyuncu sabit baraj cezası alır (+101 veya bitiş çift/okeyse +202)
                     info.RoundPenalty = isDoublePenalty ? 202 : 101;
                     info.SummaryText = isDoublePenalty ? "El Açamadı (2 Kat Ceza: +202)" : "El Açamadı (+101)";
                 }
@@ -68,7 +69,6 @@ public static class ScoreEngine
                         }
                     }
 
-                    // Eğer biten okeyle veya çiftten bitmişse kalan taş cezası 2 katına çıkar
                     if (isDoublePenalty)
                     {
                         handSum *= 2;
