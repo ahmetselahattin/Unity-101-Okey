@@ -13,6 +13,9 @@ public class TileDisplay : MonoBehaviour, IPointerClickHandler
     public Color NormalTileBgColor = new Color(0.98f, 0.97f, 0.94f, 1f); // Doğal kemik/krem rengi
     public Color FlippedTileBgColor = new Color(1f, 1f, 1f, 1f);          // Bembeyaz sayısız taş sırtı
 
+    [Header("Çevrilebilirlik")]
+    public bool CanFlip = true; // Yalnızca oyuncunun ıstakasındaki taşlar için true'dur
+
     public Tile tileData { get; private set; }
     public bool IsFlipped { get; private set; } = false;
 
@@ -32,6 +35,8 @@ public class TileDisplay : MonoBehaviour, IPointerClickHandler
 
     public void OnPointerClick(PointerEventData eventData)
     {
+        if (!CanFlip) return; // Gösterge, masa perleri ve atılan taşlar döndürülemez!
+
         // Sol tık ile çift tıklama (Double Click) kontrolü
         if (eventData.button == PointerEventData.InputButton.Left && eventData.clickCount == 2)
         {
@@ -41,6 +46,8 @@ public class TileDisplay : MonoBehaviour, IPointerClickHandler
 
     public void ToggleFlip()
     {
+        if (!CanFlip) return;
+
         IsFlipped = !IsFlipped;
         UpdateVisuals();
         Debug.Log($"[TileDisplay] Taş ters çevrildi. Durum: {(IsFlipped ? "Ters (Bembeyaz/Boş)" : "Düz")}");

@@ -13,7 +13,7 @@ public class TableView : MonoBehaviour
     public TileDisplay gostergeTileDisplay;
     public TextMeshProUGUI centerStoneText;
 
-    [Header("Sol Taş Alma (Yandan Taş) Referansları")]
+    [Header("Sol Taş Alma (Yandan Taş) Referanslar")]
     public GameObject leftDiscardArea;
     public TileDisplay leftDiscardTileDisplay;
     public Button leftDiscardButton;
@@ -34,6 +34,7 @@ public class TableView : MonoBehaviour
 
         if (gostergeTileDisplay != null)
         {
+            gostergeTileDisplay.CanFlip = false; // Gösterge taşı asla ters çevrilemez!
             gostergeTileDisplay.SetTile(gostergeTile);
             return;
         }
@@ -65,13 +66,14 @@ public class TableView : MonoBehaviour
 
         if (leftDiscardTileDisplay != null)
         {
+            leftDiscardTileDisplay.CanFlip = false; // Yandan çekilen slot çevrilemez
             if (tile == null)
             {
-                leftDiscardTileDisplay.gameObject.SetActive(false); // Taş yoksa içini gizle
+                leftDiscardTileDisplay.gameObject.SetActive(false);
             }
             else
             {
-                leftDiscardTileDisplay.gameObject.SetActive(true); // Taş atıldığında görünür yap
+                leftDiscardTileDisplay.gameObject.SetActive(true);
                 leftDiscardTileDisplay.SetTile(tile);
             }
         }
@@ -141,6 +143,7 @@ public class TableView : MonoBehaviour
                     TileDisplay display = tileObj.GetComponent<TileDisplay>();
                     if (display != null)
                     {
+                        display.CanFlip = false; // Masadaki perler ters çevrilemez
                         display.SetTile(tile);
                     }
                 }
