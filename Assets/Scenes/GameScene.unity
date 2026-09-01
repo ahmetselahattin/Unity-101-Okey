@@ -185,6 +185,7 @@ GameObject:
   m_Component:
   - component: {fileID: 88063374}
   - component: {fileID: 88063372}
+  - component: {fileID: 88063375}
   m_Layer: 0
   m_Name: GameManager
   m_TagString: Untagged
@@ -3164,3 +3165,21 @@ MonoBehaviour:
   m_enableAutoSizing: 0
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
+--- !u!114 &88063375
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 88063371}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aa584fbee541324448dd18d8409c7a41, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PhotonUnityNetworking::Photon.Pun.PhotonView
+  OwnershipTransfer: 0
+  observableSearch: 2
+  ObservedComponents: []
+  sceneViewId: 1
+  InstantiationId: 0
+  isRuntimeInstantiated: 0

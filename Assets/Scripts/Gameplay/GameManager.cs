@@ -1,7 +1,10 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
+using Photon.Pun;
+using Photon.Realtime;
 
 public enum FinishType
 {
@@ -10,7 +13,7 @@ public enum FinishType
     Pairs
 }
 
-public class GameManager : MonoBehaviour
+public class GameManager : MonoBehaviourPunCallbacks
 {
     public static GameManager Instance { get; private set; }
 
@@ -32,17 +35,39 @@ public class GameManager : MonoBehaviour
 
     [Header("Masa Durumu ve Kurallar")]
     public List<Meld> tableMelds = new List<Meld>();
-    public Tile[] lastDiscardedTiles = new Tile[4]; // Her koltuğun son attığı taş
+    public Tile[] lastDiscardedTiles = new Tile[4];
     public bool hasDrawnTileThisTurn = false;
     public bool isGameOver = false;
 
     public event Action<Player, FinishType, List<PlayerScoreInfo>> OnGameFinished;
 
+    public bool isOnlineGame => PhotonNetwork.IsConnected && PhotonNetwork.InRoom;
+
+    public int localSeatIndex
+    {
+        get
+        {
+            if (isOnlineGame && PhotonNetwork.LocalPlayer != null)
+            {
+                // 0-3 arası koltuk indeksi
+                int actor = PhotonNetwork.LocalPlayer.ActorNumber - 1;
+                return Mathf.Clamp(actor, 0, 3);
+            }
+            return 0;
+        }
+    }
+
     public int currentPlayerIndex => turnManager != null ? turnManager.CurrentPlayerIndex : 0;
     public bool isFirstTurn => turnManager != null ? turnManager.IsFirstTurn : true;
 
-    // Oyuncu 0'ın solundaki (Bot 3'ün) attığı taş
-    public Tile lastDiscardedTileByLeftPlayer => lastDiscardedTiles[3];
+    public Tile lastDiscardedTileByLeftPlayer
+    {
+        get
+        {
+            int leftSeat = (localSeatIndex + 3) % 4;
+            return lastDiscardedTiles[leftSeat];
+        }
+    }
 
     private void Awake()
     {
@@ -85,8 +110,23 @@ public class GameManager : MonoBehaviour
 
     public void OyunuBaslat()
     {
-        Debug.Log("[GameManager] Oyun Başlıyor! Taşlar dağıtılıyor...");
+        Debug.Log("[GameManager] Oyun Başlatılıyor...");
 
+        if (isOnlineGame)
+        {
+            if (PhotonNetwork.IsMasterClient)
+            {
+                StartOnlineGame();
+            }
+        }
+        else
+        {
+            StartOfflineGame();
+        }
+    }
+
+    private void StartOfflineGame()
+    {
         isGameOver = false;
         if (inGameUI != null) inGameUI.SetActive(true);
         if (centerStone != null) centerStone.SetActive(true);
@@ -129,6 +169,42 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    private void StartOnlineGame()
+    {
+        deckManager = new DeckManager();
+        deckManager.CreateDeck();
+        deckManager.Shuffle();
+        deckManager.DetermineOkey();
+
+        Tile g = deckManager.Gosterge;
+        Tile o = deckManager.OkeyTile;
+
+        photonView.RPC(nameof(RPC_SyncOkeyAndGameStart), RpcTarget.All,
+            g.TileValue, (int)g.Color, g.IsFakeOkey,
+            o.TileValue, (int)o.Color);
+
+        // Her koltuğa taşlarını gönder
+        for (int i = 0; i < 4; i++)
+        {
+            int count = (i == 0) ? 22 : 21;
+            StringBuilder sb = new StringBuilder();
+
+            for (int j = 0; j < count; j++)
+            {
+                Tile t = deckManager.DrawTile();
+                if (t != null)
+                {
+                    if (j > 0) sb.Append(",");
+                    sb.Append(t.TileValue).Append("_").Append((int)t.Color).Append("_").Append(t.IsFakeOkey ? 1 : 0);
+                }
+            }
+
+            photonView.RPC(nameof(RPC_ReceiveHand), RpcTarget.All, i, sb.ToString());
+        }
+
+        photonView.RPC(nameof(RPC_SyncTurn), RpcTarget.All, 0, true);
+    }
+
     public void DistributeTiles()
     {
         if (deckManager == null) return;
@@ -149,7 +225,7 @@ public class GameManager : MonoBehaviour
 
     public void DrawTileFromDeck()
     {
-        if (isGameOver || currentPlayerIndex != 0) return;
+        if (isGameOver || currentPlayerIndex != localSeatIndex) return;
 
         if (hasDrawnTileThisTurn)
         {
@@ -157,26 +233,46 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        if (deckManager != null && deckManager.RemainingCount > 0)
+        if (isOnlineGame)
         {
-            Tile drawnTile = deckManager.DrawTile();
-            players[0].AddTile(drawnTile);
-            hasDrawnTileThisTurn = true;
-
-            if (uiManager != null)
+            // MasterClient'tan veya desteden taş iste
+            if (deckManager != null && deckManager.RemainingCount > 0)
             {
-                uiManager.AddSingleTileToHand(drawnTile);
-                uiManager.SetDeckButtonState(false);
-                uiManager.SetLeftDiscardButtonState(false);
-            }
+                Tile drawnTile = deckManager.DrawTile();
+                players[localSeatIndex].AddTile(drawnTile);
+                hasDrawnTileThisTurn = true;
 
-            Debug.Log($"[GameManager] Desteden taş çekildi: {drawnTile}");
+                if (uiManager != null)
+                {
+                    uiManager.AddSingleTileToHand(drawnTile);
+                    uiManager.SetDeckButtonState(false);
+                    uiManager.SetLeftDiscardButtonState(false);
+                }
+            }
+        }
+        else
+        {
+            if (deckManager != null && deckManager.RemainingCount > 0)
+            {
+                Tile drawnTile = deckManager.DrawTile();
+                players[0].AddTile(drawnTile);
+                hasDrawnTileThisTurn = true;
+
+                if (uiManager != null)
+                {
+                    uiManager.AddSingleTileToHand(drawnTile);
+                    uiManager.SetDeckButtonState(false);
+                    uiManager.SetLeftDiscardButtonState(false);
+                }
+
+                Debug.Log($"[GameManager] Desteden taş çekildi: {drawnTile}");
+            }
         }
     }
 
     public void DrawTileFromLeftDiscard()
     {
-        if (isGameOver || currentPlayerIndex != 0) return;
+        if (isGameOver || currentPlayerIndex != localSeatIndex) return;
 
         if (hasDrawnTileThisTurn)
         {
@@ -191,16 +287,17 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        if (!OkeyRuleEngine.CanDrawFromDiscard(players[0], leftTile, deckManager.OkeyTile, tableMelds, out string ruleReason))
+        if (!OkeyRuleEngine.CanDrawFromDiscard(players[localSeatIndex], leftTile, deckManager.OkeyTile, tableMelds, out string ruleReason))
         {
             Debug.LogWarning($"[GameManager] {ruleReason}");
             return;
         }
 
-        lastDiscardedTiles[3] = null;
+        int leftSeat = (localSeatIndex + 3) % 4;
+        lastDiscardedTiles[leftSeat] = null;
 
-        players[0].AddTile(leftTile);
-        players[0].HasDrawnFromDiscard = true;
+        players[localSeatIndex].AddTile(leftTile);
+        players[localSeatIndex].HasDrawnFromDiscard = true;
         hasDrawnTileThisTurn = true;
 
         if (uiManager != null)
@@ -211,17 +308,17 @@ public class GameManager : MonoBehaviour
             uiManager.SetLeftDiscardButtonState(false);
         }
 
-        Debug.Log($"[GameManager] Yandan taş başarıyla alındı: {leftTile}. (DİKKAT: Bu tur elinizi açmak/işlemek zorundasınız!)");
+        Debug.Log($"[GameManager] Yandan taş alındı: {leftTile}. (Bu tur elinizi açmak/işlemek zorundasınız!)");
     }
 
     public void OnAutoSortClicked()
     {
-        if (players[0] != null && deckManager != null)
+        if (players[localSeatIndex] != null && deckManager != null)
         {
-            HandSorter.SortByColorAndValue(players[0].Hand, deckManager.OkeyTile);
+            HandSorter.SortByColorAndValue(players[localSeatIndex].Hand, deckManager.OkeyTile);
             if (uiManager != null)
             {
-                uiManager.RefreshHand(players[0].Hand);
+                uiManager.RefreshHand(players[localSeatIndex].Hand);
             }
         }
     }
@@ -234,7 +331,7 @@ public class GameManager : MonoBehaviour
 
         if (OkeyRuleEngine.ValidateOpenHand(rawMelds, deckManager.OkeyTile, out int totalPoints, out string error))
         {
-            Debug.Log($"[GameManager] Tebrikler! 101 barajı aşıldı (Toplam Puan: {totalPoints}), el masaya açılıyor.");
+            Debug.Log($"[GameManager] Tebrikler! 101 barajı aşıldı ({totalPoints} Puan), el masaya açılıyor.");
 
             List<Meld> newOpenedMelds = new List<Meld>();
             foreach (var tileGroup in rawMelds)
@@ -244,23 +341,25 @@ public class GameManager : MonoBehaviour
                 Meld m = new Meld(tileGroup, type, points);
                 newOpenedMelds.Add(m);
                 tableMelds.Add(m);
-                players[0].OpenedMelds.Add(m);
-            }
+                players[localSeatIndex].OpenedMelds.Add(m);
 
-            players[0].HasOpenedHand = true;
-            players[0].HasOpenedPairs = false;
-            players[0].HasDrawnFromDiscard = false;
-
-            foreach (var m in newOpenedMelds)
-            {
-                foreach (var tile in m.Tiles)
+                foreach (var tile in tileGroup)
                 {
-                    players[0].RemoveTile(tile);
+                    players[localSeatIndex].RemoveTile(tile);
                 }
             }
 
-            uiManager.RefreshHand(players[0].Hand);
+            players[localSeatIndex].HasOpenedHand = true;
+            players[localSeatIndex].HasOpenedPairs = false;
+            players[localSeatIndex].HasDrawnFromDiscard = false;
+
+            uiManager.RefreshHand(players[localSeatIndex].Hand);
             uiManager.DrawOpenedMeldsOnTable(tableMelds);
+
+            if (isOnlineGame)
+            {
+                photonView.RPC(nameof(RPC_OnPlayerOpenedMelds), RpcTarget.Others, localSeatIndex, Meld.SerializeMelds(newOpenedMelds), false);
+            }
         }
         else
         {
@@ -270,31 +369,36 @@ public class GameManager : MonoBehaviour
 
     public void OnOpenPairsClicked()
     {
-        if (isGameOver || deckManager == null || players[0] == null) return;
+        if (isGameOver || deckManager == null || players[localSeatIndex] == null) return;
 
-        if (OkeyRuleEngine.ValidateOpenPairs(players[0].Hand, deckManager.OkeyTile, out List<Meld> pairsToOpen, out string error))
+        if (OkeyRuleEngine.ValidateOpenPairs(players[localSeatIndex].Hand, deckManager.OkeyTile, out List<Meld> pairsToOpen, out string error))
         {
             Debug.Log($"[GameManager] Tebrikler! {pairsToOpen.Count} çift ile el masaya açılıyor.");
 
             foreach (var pairMeld in pairsToOpen)
             {
                 tableMelds.Add(pairMeld);
-                players[0].OpenedMelds.Add(pairMeld);
+                players[localSeatIndex].OpenedMelds.Add(pairMeld);
 
                 foreach (var tile in pairMeld.Tiles)
                 {
-                    players[0].RemoveTile(tile);
+                    players[localSeatIndex].RemoveTile(tile);
                 }
             }
 
-            players[0].HasOpenedHand = true;
-            players[0].HasOpenedPairs = true;
-            players[0].HasDrawnFromDiscard = false;
+            players[localSeatIndex].HasOpenedHand = true;
+            players[localSeatIndex].HasOpenedPairs = true;
+            players[localSeatIndex].HasDrawnFromDiscard = false;
 
             if (uiManager != null)
             {
-                uiManager.RefreshHand(players[0].Hand);
+                uiManager.RefreshHand(players[localSeatIndex].Hand);
                 uiManager.DrawOpenedMeldsOnTable(tableMelds);
+            }
+
+            if (isOnlineGame)
+            {
+                photonView.RPC(nameof(RPC_OnPlayerOpenedMelds), RpcTarget.Others, localSeatIndex, Meld.SerializeMelds(pairsToOpen), true);
             }
         }
         else
@@ -305,7 +409,7 @@ public class GameManager : MonoBehaviour
 
     public bool ProcessTileToTable(Tile tile, int meldIndex)
     {
-        if (isGameOver || !players[0].HasOpenedHand)
+        if (isGameOver || !players[localSeatIndex].HasOpenedHand)
         {
             Debug.LogWarning("[GameManager] Masaya taş işleyebilmek için önce elinizi açmış olmanız gerekir!");
             return false;
@@ -316,24 +420,23 @@ public class GameManager : MonoBehaviour
 
         Meld targetMeld = tableMelds[meldIndex];
 
-        if (OkeyRuleEngine.CanProcessTileToMeld(tile, targetMeld, deckManager.OkeyTile, players[0].HasOpenedPairs, out bool addToStart))
+        if (OkeyRuleEngine.CanProcessTileToMeld(tile, targetMeld, deckManager.OkeyTile, players[localSeatIndex].HasOpenedPairs, out bool addToStart))
         {
-            if (addToStart)
-            {
-                targetMeld.Tiles.Insert(0, tile);
-            }
-            else
-            {
-                targetMeld.Tiles.Add(tile);
-            }
+            if (addToStart) targetMeld.Tiles.Insert(0, tile);
+            else targetMeld.Tiles.Add(tile);
 
-            players[0].RemoveTile(tile);
-            players[0].HasDrawnFromDiscard = false;
+            players[localSeatIndex].RemoveTile(tile);
+            players[localSeatIndex].HasDrawnFromDiscard = false;
 
             if (uiManager != null)
             {
-                uiManager.RefreshHand(players[0].Hand);
+                uiManager.RefreshHand(players[localSeatIndex].Hand);
                 uiManager.DrawOpenedMeldsOnTable(tableMelds);
+            }
+
+            if (isOnlineGame)
+            {
+                photonView.RPC(nameof(RPC_OnTileProcessed), RpcTarget.Others, localSeatIndex, meldIndex, tile.TileValue, (int)tile.Color, tile.IsFakeOkey, addToStart);
             }
 
             Debug.Log($"[GameManager] {tile} taşı masadaki pere başarıyla işlendi!");
@@ -346,9 +449,9 @@ public class GameManager : MonoBehaviour
 
     public bool CanPlayerDiscard()
     {
-        if (isGameOver || currentPlayerIndex != 0) return false;
+        if (isGameOver || currentPlayerIndex != localSeatIndex) return false;
         if (!hasDrawnTileThisTurn && !isFirstTurn) return false;
-        if (players[0].HasDrawnFromDiscard) return false;
+        if (players[localSeatIndex].HasDrawnFromDiscard) return false;
 
         return true;
     }
@@ -357,40 +460,61 @@ public class GameManager : MonoBehaviour
     {
         if (!CanPlayerDiscard())
         {
-            Debug.LogError("[GameManager] KURAL İHLALİ: Yandan taş aldığınız için bu tur elinizi açmak veya masaya işlemek zorundasınız! Taş atamazsınız.");
+            Debug.LogError("[GameManager] KURAL İHLALİ: Taş atamazsınız!");
             if (uiManager != null)
             {
-                uiManager.RefreshHand(players[0].Hand);
+                uiManager.RefreshHand(players[localSeatIndex].Hand);
             }
             return;
         }
 
-        if (discardedTile != null && players[0] != null)
+        if (discardedTile != null && players[localSeatIndex] != null)
         {
-            players[0].RemoveTile(discardedTile);
-            lastDiscardedTiles[0] = discardedTile;
+            players[localSeatIndex].RemoveTile(discardedTile);
+            lastDiscardedTiles[localSeatIndex] = discardedTile;
             Debug.Log($"[GameManager] Oyuncu bir taş attı: {discardedTile}");
         }
 
         hasDrawnTileThisTurn = false;
 
+        if (isOnlineGame)
+        {
+            photonView.RPC(nameof(RPC_OnTileDiscarded), RpcTarget.All, localSeatIndex, discardedTile.TileValue, (int)discardedTile.Color, discardedTile.IsFakeOkey);
+        }
+
         // EL BİTİRME KONTROLÜ
-        if (players[0].Hand.Count == 0 && players[0].HasOpenedHand)
+        if (players[localSeatIndex].Hand.Count == 0 && players[localSeatIndex].HasOpenedHand)
         {
             bool isOkey = OkeyRuleEngine.IsOkeyTile(discardedTile, deckManager.OkeyTile);
-            FinishType finish = isOkey ? FinishType.Okey : (players[0].HasOpenedPairs ? FinishType.Pairs : FinishType.Normal);
-            HandleGameFinished(players[0], finish);
+            FinishType finish = isOkey ? FinishType.Okey : (players[localSeatIndex].HasOpenedPairs ? FinishType.Pairs : FinishType.Normal);
+
+            if (isOnlineGame)
+            {
+                photonView.RPC(nameof(RPC_OnGameFinished), RpcTarget.All, localSeatIndex, (int)finish);
+            }
+            else
+            {
+                HandleGameFinished(players[0], finish);
+            }
             return;
         }
 
-        EndTurn();
+        if (isOnlineGame)
+        {
+            int nextSeat = (localSeatIndex + 1) % 4;
+            photonView.RPC(nameof(RPC_SyncTurn), RpcTarget.All, nextSeat, false);
+        }
+        else
+        {
+            EndTurn();
+        }
     }
 
     public void HandleGameFinished(Player winner, FinishType finishType)
     {
         isGameOver = true;
 
-        List<PlayerScoreInfo> scores = ScoreEngine.CalculateScores(players, winner, finishType, deckManager.OkeyTile);
+        List<PlayerScoreInfo> scores = ScoreEngine.CalculateScores(players, winner, finishType, deckManager?.OkeyTile);
 
         string finishDesc = finishType switch
         {
@@ -425,7 +549,7 @@ public class GameManager : MonoBehaviour
     {
         if (isGameOver) return;
 
-        if (activePlayerIndex == 0)
+        if (activePlayerIndex == localSeatIndex)
         {
             hasDrawnTileThisTurn = false;
 
@@ -445,7 +569,7 @@ public class GameManager : MonoBehaviour
                 {
                     uiManager.SetDeckButtonState(true);
                     Tile leftTile = lastDiscardedTileByLeftPlayer;
-                    bool canDrawLeft = (leftTile != null && OkeyRuleEngine.CanDrawFromDiscard(players[0], leftTile, deckManager.OkeyTile, tableMelds, out _));
+                    bool canDrawLeft = (leftTile != null && OkeyRuleEngine.CanDrawFromDiscard(players[localSeatIndex], leftTile, deckManager?.OkeyTile, tableMelds, out _));
                     uiManager.SetLeftDiscardTile(leftTile, canDrawLeft);
                     uiManager.SetLeftDiscardButtonState(canDrawLeft);
                 }
@@ -459,9 +583,8 @@ public class GameManager : MonoBehaviour
                 uiManager.SetLeftDiscardButtonState(false);
             }
 
-            if (botController != null && players[activePlayerIndex] != null)
+            if (!isOnlineGame && botController != null && players[activePlayerIndex] != null)
             {
-                // Botun solundaki oyuncunun koltuğu: (active - 1 + 4) % 4
                 int leftSeat = (activePlayerIndex + 3) % 4;
                 Tile leftDiscard = lastDiscardedTiles[leftSeat];
 
@@ -471,21 +594,18 @@ public class GameManager : MonoBehaviour
                     leftDiscard,
                     tableMelds,
                     () => {
-                        // Masada perler güncellendiğinde UI'ı yenile
                         if (uiManager != null) uiManager.DrawOpenedMeldsOnTable(tableMelds);
                     },
                     (botDiscard) =>
                     {
                         lastDiscardedTiles[activePlayerIndex] = botDiscard;
 
-                        // Eğer solumuzdaki bot (Bot 3) taş attıysa, sol taş alanımızda görünsün
                         if (activePlayerIndex == 3 && uiManager != null)
                         {
-                            bool canDraw = OkeyRuleEngine.CanDrawFromDiscard(players[0], botDiscard, deckManager.OkeyTile, tableMelds, out _);
+                            bool canDraw = OkeyRuleEngine.CanDrawFromDiscard(players[0], botDiscard, deckManager?.OkeyTile, tableMelds, out _);
                             uiManager.SetLeftDiscardTile(botDiscard, canDraw);
                         }
 
-                        // Bot el bitirme kontrolü
                         if (players[activePlayerIndex].Hand.Count == 0 && players[activePlayerIndex].HasOpenedHand)
                         {
                             bool isOkey = OkeyRuleEngine.IsOkeyTile(botDiscard, deckManager.OkeyTile);
@@ -498,11 +618,134 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    // --- UYUMLULUK VE KURAL KÖPRÜLERİ ---
-    public bool TasOkeyMi(Tile tas) => OkeyRuleEngine.IsOkeyTile(tas, deckManager?.OkeyTile);
-    public bool CheckGroupPer(List<Tile> tileList) => OkeyRuleEngine.CheckGroupPer(tileList, deckManager?.OkeyTile);
-    public bool CheckSequencePer(List<Tile> tileList) => OkeyRuleEngine.CheckSequencePer(tileList, deckManager?.OkeyTile);
-    public bool CheckForPairs(List<Tile> hand) => OkeyRuleEngine.DetectPairs(hand, deckManager?.OkeyTile, out _);
-    public int CalculateTotalPointsWithOkey(List<List<Tile>> allMelds) => OkeyRuleEngine.CalculateTotalPoints(allMelds, deckManager?.OkeyTile);
-    public void SortHand(List<Tile> handToSort) => HandSorter.SortByColorAndValue(handToSort, deckManager?.OkeyTile);
+    // ── PHOTON RPC ÇOK OYUNCULU SENKRONİZASYONLARI ──
+
+    [PunRPC]
+    public void RPC_SyncOkeyAndGameStart(int gVal, int gCol, bool gFake, int oVal, int oCol)
+    {
+        isGameOver = false;
+        if (inGameUI != null) inGameUI.SetActive(true);
+        if (centerStone != null) centerStone.SetActive(true);
+
+        tableMelds.Clear();
+        for (int i = 0; i < 4; i++) lastDiscardedTiles[i] = null;
+        hasDrawnTileThisTurn = false;
+
+        deckManager = new DeckManager();
+        deckManager.Gosterge = new Tile(gVal, (TileColor)gCol, gFake);
+        deckManager.OkeyTile = new Tile(oVal, (TileColor)oCol, false);
+
+        for (int i = 0; i < 4; i++)
+        {
+            string nick = (i == localSeatIndex) ? "Sen" : $"Oyuncu_{i + 1}";
+            players[i] = new Player(i, nick, false);
+        }
+
+        if (uiManager != null)
+        {
+            uiManager.GostergeyiEkranaYansit(deckManager.Gosterge);
+            uiManager.SetLeftDiscardTile(null, false);
+            uiManager.DrawOpenedMeldsOnTable(tableMelds);
+            if (uiManager.scoreboardUI != null) uiManager.scoreboardUI.Hide();
+        }
+    }
+
+    [PunRPC]
+    public void RPC_ReceiveHand(int seatIndex, string handData)
+    {
+        if (seatIndex != localSeatIndex) return;
+
+        List<Tile> hand = new List<Tile>();
+        if (!string.IsNullOrEmpty(handData))
+        {
+            string[] items = handData.Split(',');
+            foreach (var item in items)
+            {
+                string[] parts = item.Split('_');
+                if (parts.Length >= 3)
+                {
+                    int v = int.Parse(parts[0]);
+                    TileColor c = (TileColor)int.Parse(parts[1]);
+                    bool f = (parts[2] == "1");
+                    hand.Add(new Tile(v, c, f));
+                }
+            }
+        }
+
+        players[localSeatIndex].Hand.Clear();
+        foreach (var t in hand) players[localSeatIndex].AddTile(t);
+
+        if (uiManager != null)
+        {
+            uiManager.DrawPlayerHand(players[localSeatIndex].Hand);
+        }
+    }
+
+    [PunRPC]
+    public void RPC_SyncTurn(int activeSeatIndex, bool isFirst)
+    {
+        if (turnManager != null)
+        {
+            turnManager.CurrentPlayerIndex = activeSeatIndex;
+            turnManager.IsFirstTurn = isFirst;
+        }
+
+        HandleTurnChanged(activeSeatIndex);
+    }
+
+    [PunRPC]
+    public void RPC_OnTileDiscarded(int fromSeatIndex, int tileVal, int tileCol, bool isFake)
+    {
+        Tile discarded = new Tile(tileVal, (TileColor)tileCol, isFake);
+        lastDiscardedTiles[fromSeatIndex] = discarded;
+
+        int myLeftSeat = (localSeatIndex + 3) % 4;
+        if (fromSeatIndex == myLeftSeat && uiManager != null)
+        {
+            bool canDraw = OkeyRuleEngine.CanDrawFromDiscard(players[localSeatIndex], discarded, deckManager?.OkeyTile, tableMelds, out _);
+            uiManager.SetLeftDiscardTile(discarded, canDraw && (currentPlayerIndex == localSeatIndex));
+        }
+    }
+
+    [PunRPC]
+    public void RPC_OnPlayerOpenedMelds(int fromSeatIndex, string meldsData, bool isPairs)
+    {
+        List<Meld> newMelds = Meld.DeserializeMelds(meldsData);
+        foreach (var m in newMelds)
+        {
+            tableMelds.Add(m);
+            players[fromSeatIndex].OpenedMelds.Add(m);
+        }
+
+        players[fromSeatIndex].HasOpenedHand = true;
+        players[fromSeatIndex].HasOpenedPairs = isPairs;
+
+        if (uiManager != null)
+        {
+            uiManager.DrawOpenedMeldsOnTable(tableMelds);
+        }
+    }
+
+    [PunRPC]
+    public void RPC_OnTileProcessed(int fromSeatIndex, int meldIndex, int tileVal, int tileCol, bool isFake, bool addToStart)
+    {
+        if (meldIndex >= 0 && meldIndex < tableMelds.Count)
+        {
+            Tile tile = new Tile(tileVal, (TileColor)tileCol, isFake);
+            if (addToStart) tableMelds[meldIndex].Tiles.Insert(0, tile);
+            else tableMelds[meldIndex].Tiles.Add(tile);
+
+            if (uiManager != null)
+            {
+                uiManager.DrawOpenedMeldsOnTable(tableMelds);
+            }
+        }
+    }
+
+    [PunRPC]
+    public void RPC_OnGameFinished(int winnerSeatIndex, int finishTypeInt)
+    {
+        FinishType finish = (FinishType)finishTypeInt;
+        HandleGameFinished(players[winnerSeatIndex], finish);
+    }
 }
