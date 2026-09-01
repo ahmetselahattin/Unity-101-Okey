@@ -26,18 +26,23 @@ public class TableManager : MonoBehaviourPunCallbacks
 
     public override void OnPlayerLeftRoom(Photon.Realtime.Player otherPlayer)
     {
-        Debug.Log("[TableManager] Bir oyuncu masadan kalkt.");
+        Debug.Log("[TableManager] Bir oyuncu masadan kalktı.");
         CheckPlayerCount();
     }
 
     private void CheckPlayerCount()
     {
-        if (testModuAktif)
+        bool isOnline = (PhotonNetwork.IsConnected && PhotonNetwork.InRoom);
+
+        // Eğer online bir odada değilsek veya test modu aktifse hemen oyunu başlat
+        if (!isOnline || testModuAktif)
         {
             if (waitingText != null) waitingText.gameObject.SetActive(false);
 
-            GameManager gm = FindObjectOfType<GameManager>();
-            if (gm != null) gm.OyunuBaslat();
+            if (GameManager.Instance != null)
+            {
+                GameManager.Instance.OyunuBaslat();
+            }
             return;
         }
 
@@ -50,7 +55,7 @@ public class TableManager : MonoBehaviourPunCallbacks
 
         if (currentPlayers >= RequiredPlayers)
         {
-            Debug.Log("[TableManager] Masa doldu! Oyun balatlyor.");
+            Debug.Log("[TableManager] Masa doldu! Oyun başlatılıyor.");
 
             if (waitingText != null)
             {
@@ -59,8 +64,10 @@ public class TableManager : MonoBehaviourPunCallbacks
 
             if (PhotonNetwork.IsMasterClient)
             {
-                GameManager gm = FindObjectOfType<GameManager>();
-                if (gm != null) gm.OyunuBaslat();
+                if (GameManager.Instance != null)
+                {
+                    GameManager.Instance.OyunuBaslat();
+                }
             }
         }
     }

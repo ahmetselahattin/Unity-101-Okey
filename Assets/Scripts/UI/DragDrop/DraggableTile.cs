@@ -31,7 +31,11 @@ public class DraggableTile : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
         placeholder.transform.SetSiblingIndex(transform.GetSiblingIndex());
 
         if (rootCanvas == null) rootCanvas = GetComponentInParent<Canvas>();
-        if (rootCanvas != null) transform.SetParent(rootCanvas.transform);
+        if (rootCanvas != null)
+        {
+            transform.SetParent(rootCanvas.transform);
+            transform.SetAsLastSibling(); // En üst katmana al ki diğer UI arkasında kalmasın!
+        }
 
         if (canvasGroup != null) canvasGroup.blocksRaycasts = false;
     }
@@ -104,7 +108,6 @@ public class DraggableTile : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
                 canvasGroup.interactable = false;
             }
 
-            // Atılan taşın tekrar sürüklenmesini engelle
             Destroy(this);
         }
         else
