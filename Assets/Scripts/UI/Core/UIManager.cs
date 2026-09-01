@@ -158,8 +158,8 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    public List<List<Tile>> GetMeldsFromIstaka()
+    public List<List<Tile>> GetMeldsFromIstaka(Tile okeyTile = null)
     {
-        return istakaController != null ? istakaController.GetMeldsFromIstaka() : new List<List<Tile>>();
+        return istakaController != null ? istakaController.GetMeldsFromIstaka(okeyTile) : new List<List<Tile>>();
     }
 }

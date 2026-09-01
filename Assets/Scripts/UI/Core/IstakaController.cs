@@ -56,9 +56,6 @@ public class IstakaController : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Perleri aralıklı ve akıllıca dizilmiş 42 slotluk yerleşimi ıstakaya çizer.
-    /// </summary>
     public void DrawArrangedHand(Tile[] slotLayout)
     {
         ClearTilesOnly();
@@ -115,10 +112,14 @@ public class IstakaController : MonoBehaviour
         }
     }
 
-    public List<List<Tile>> GetMeldsFromIstaka()
+    /// <summary>
+    /// Istakadaki taşları fiziksel sırasına göre okur. İster aralarında boşluk olsun ister bitişik
+    /// dizilmiş olsun, oyuncunun soldan sağa dizdiği perleri tam olarak ayrıştırır.
+    /// </summary>
+    public List<List<Tile>> GetMeldsFromIstaka(Tile okeyTile = null)
     {
         List<List<Tile>> detectedMelds = new List<List<Tile>>();
-        List<Tile> currentGroup = new List<Tile>();
+        List<Tile> currentBlock = new List<Tile>();
 
         for (int i = 0; i < istakaSlots.Count; i++)
         {
@@ -127,34 +128,73 @@ public class IstakaController : MonoBehaviour
 
             if (tileDisp != null && tileDisp.tileData != null)
             {
-                currentGroup.Add(tileDisp.tileData);
+                currentBlock.Add(tileDisp.tileData);
             }
             else
             {
-                if (currentGroup.Count >= 3)
+                if (currentBlock.Count > 0)
                 {
-                    detectedMelds.Add(new List<Tile>(currentGroup));
+                    ProcessContiguousBlock(currentBlock, okeyTile, detectedMelds);
+                    currentBlock.Clear();
                 }
-                currentGroup.Clear();
             }
 
-            // Satır sonu kontrolü (Slot 20 üst satırın sonudur, alt satıra geçerken per bölünür)
+            // Satır sonu kontrolü (Slot 20 üst satırın sonudur)
             if (i == SlotsPerRow - 1)
             {
-                if (currentGroup.Count >= 3)
+                if (currentBlock.Count > 0)
                 {
-                    detectedMelds.Add(new List<Tile>(currentGroup));
+                    ProcessContiguousBlock(currentBlock, okeyTile, detectedMelds);
+                    currentBlock.Clear();
                 }
-                currentGroup.Clear();
             }
         }
 
-        if (currentGroup.Count >= 3)
+        if (currentBlock.Count > 0)
         {
-            detectedMelds.Add(new List<Tile>(currentGroup));
+            ProcessContiguousBlock(currentBlock, okeyTile, detectedMelds);
         }
 
         return detectedMelds;
+    }
+
+    private void ProcessContiguousBlock(List<Tile> block, Tile okeyTile, List<List<Tile>> outputMelds)
+    {
+        if (block == null || block.Count < 3) return;
+
+        // 1. Blok tek başına geçerli bir per mi?
+        if (OkeyRuleEngine.CheckGroupPer(block, okeyTile) || OkeyRuleEngine.CheckSequencePer(block, okeyTile))
+        {
+            outputMelds.Add(new List<Tile>(block));
+            return;
+        }
+
+        // 2. Blok bitişik dizilmiş birden fazla per içeriyorsa soldan sağa parçala
+        int i = 0;
+        while (i < block.Count)
+        {
+            bool found = false;
+            // 5'li, 4'lü, 3'lü per parçalarını dene
+            for (int len = 5; len >= 3; len--)
+            {
+                if (i + len <= block.Count)
+                {
+                    List<Tile> subChunk = block.GetRange(i, len);
+                    if (OkeyRuleEngine.CheckGroupPer(subChunk, okeyTile) || OkeyRuleEngine.CheckSequencePer(subChunk, okeyTile))
+                    {
+                        outputMelds.Add(subChunk);
+                        i += len;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!found)
+            {
+                i++; // Geçersiz tekil taşı atla
+            }
+        }
     }
 
     public void RemoveTiles(List<Tile> tilesToRemove)

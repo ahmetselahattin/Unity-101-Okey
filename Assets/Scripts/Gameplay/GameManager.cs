@@ -365,7 +365,7 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         if (isGameOver || uiManager == null || deckManager == null) return;
 
-        List<List<Tile>> rawMelds = uiManager.GetMeldsFromIstaka();
+        List<List<Tile>> rawMelds = uiManager.GetMeldsFromIstaka(deckManager?.OkeyTile);
         bool manualValid = OkeyRuleEngine.ValidateOpenHand(rawMelds, deckManager.OkeyTile, out int totalPoints, out string manualError);
 
         if (!manualValid || totalPoints < OkeyRuleEngine.OpenHandThreshold)
