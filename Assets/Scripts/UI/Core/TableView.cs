@@ -23,7 +23,6 @@ public class TableView : MonoBehaviour
 
     private void Start()
     {
-        // Oyun başında sol taş alma alanı boş başlasın
         SetLeftDiscardTile(null, false);
     }
 
@@ -34,7 +33,7 @@ public class TableView : MonoBehaviour
 
         if (gostergeTileDisplay != null)
         {
-            gostergeTileDisplay.CanFlip = false; // Gösterge taşı asla ters çevrilemez!
+            gostergeTileDisplay.CanFlip = false;
             gostergeTileDisplay.SetTile(gostergeTile);
             return;
         }
@@ -61,12 +60,12 @@ public class TableView : MonoBehaviour
     {
         if (leftDiscardArea != null)
         {
-            leftDiscardArea.SetActive(true); // Kutu çerçevesi görünür kalsın
+            leftDiscardArea.SetActive(true);
         }
 
         if (leftDiscardTileDisplay != null)
         {
-            leftDiscardTileDisplay.CanFlip = false; // Yandan çekilen slot çevrilemez
+            leftDiscardTileDisplay.CanFlip = false;
             if (tile == null)
             {
                 leftDiscardTileDisplay.gameObject.SetActive(false);
@@ -109,14 +108,19 @@ public class TableView : MonoBehaviour
         {
             Meld meld = melds[mIndex];
 
+            // Her per için şık bir çerçeve grubu oluştur
             GameObject meldObj = new GameObject("MeldGroup_" + mIndex);
             meldObj.transform.SetParent(tableCenterContainer, false);
 
             RectTransform meldRect = meldObj.AddComponent<RectTransform>();
-            meldRect.sizeDelta = new Vector2((meld.Tiles.Count * 45) + 10, 65);
+            meldRect.sizeDelta = new Vector2((meld.Tiles.Count * 46) + 16, 74);
+
+            Image bgImg = meldObj.AddComponent<Image>();
+            bgImg.color = new Color(0.10f, 0.12f, 0.15f, 0.88f); // Koyu şık çerçeve
 
             HorizontalLayoutGroup layout = meldObj.AddComponent<HorizontalLayoutGroup>();
-            layout.spacing = 2;
+            layout.padding = new RectOffset(6, 6, 4, 4);
+            layout.spacing = 3;
             layout.childAlignment = TextAnchor.MiddleCenter;
             layout.childControlWidth = false;
             layout.childControlHeight = false;
@@ -132,7 +136,12 @@ public class TableView : MonoBehaviour
                 {
                     GameObject tileObj = Instantiate(TilePrefab, meldObj.transform);
                     tileObj.name = "TableTile_" + tile.TileValue;
-                    tileObj.transform.localScale = new Vector3(0.85f, 0.85f, 1f);
+
+                    RectTransform rt = tileObj.GetComponent<RectTransform>();
+                    if (rt != null)
+                    {
+                        rt.sizeDelta = new Vector2(42, 62);
+                    }
 
                     DraggableTile dragComp = tileObj.GetComponent<DraggableTile>();
                     if (dragComp != null) Destroy(dragComp);
@@ -143,7 +152,7 @@ public class TableView : MonoBehaviour
                     TileDisplay display = tileObj.GetComponent<TileDisplay>();
                     if (display != null)
                     {
-                        display.CanFlip = false; // Masadaki perler ters çevrilemez
+                        display.CanFlip = false;
                         display.SetTile(tile);
                     }
                 }
