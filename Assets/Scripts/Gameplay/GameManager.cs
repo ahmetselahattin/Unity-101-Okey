@@ -260,6 +260,20 @@ public class GameManager : MonoBehaviourPunCallbacks
         Debug.Log($"[GameManager] Desteden taş çekildi: {drawnTile}. (Kalan deste: {deckManager.RemainingCount})");
     }
 
+    public void OnLeftDiscardClicked()
+    {
+        if (isGameOver || currentPlayerIndex != localSeatIndex) return;
+
+        if (players[localSeatIndex].HasDrawnFromDiscard)
+        {
+            ReturnLeftDiscardTile();
+        }
+        else
+        {
+            DrawTileFromLeftDiscard();
+        }
+    }
+
     public void DrawTileFromLeftDiscard()
     {
         if (isGameOver || currentPlayerIndex != localSeatIndex) return;
@@ -277,12 +291,6 @@ public class GameManager : MonoBehaviourPunCallbacks
             return;
         }
 
-        if (!OkeyRuleEngine.CanDrawFromDiscard(players[localSeatIndex], leftTile, deckManager.OkeyTile, tableMelds, out string ruleReason))
-        {
-            Debug.LogWarning($"[GameManager] {ruleReason}");
-            return;
-        }
-
         int leftSeat = (localSeatIndex + 3) % 4;
         lastDiscardedTiles[leftSeat] = null;
 
@@ -294,12 +302,43 @@ public class GameManager : MonoBehaviourPunCallbacks
         if (uiManager != null)
         {
             uiManager.AddSingleTileToHand(leftTile);
-            uiManager.SetLeftDiscardTile(null, false);
+            uiManager.SetLeftDiscardTile(null, true);
             uiManager.SetDeckButtonState(false);
-            uiManager.SetLeftDiscardButtonState(false);
+            uiManager.SetLeftDiscardButtonState(true);
         }
 
-        Debug.Log($"[GameManager] Yandan taş başarıyla alındı: {leftTile}. (ZORUNLU KURAL: Bu tur bu taşı per içinde kullanarak elinizi açmak veya masaya işlemek zorundasınız!)");
+        Debug.Log($"[GameManager] Yandan {leftTile} taşını denemek için aldınız. (Eğer elinizi açamazsanız bu taşa tekrar tıklayarak geri bırakabilir ve desteden çekebilirsiniz!)");
+    }
+
+    public void ReturnLeftDiscardTile()
+    {
+        if (isGameOver || currentPlayerIndex != localSeatIndex) return;
+
+        if (!players[localSeatIndex].HasDrawnFromDiscard || players[localSeatIndex].DrawnDiscardTile == null)
+        {
+            Debug.LogWarning("[GameManager] Geri bırakılacak yandan çekilmiş bir taş bulunamadı!");
+            return;
+        }
+
+        Tile returnedTile = players[localSeatIndex].DrawnDiscardTile;
+        int leftSeat = (localSeatIndex + 3) % 4;
+
+        players[localSeatIndex].RemoveTile(returnedTile);
+        lastDiscardedTiles[leftSeat] = returnedTile;
+
+        players[localSeatIndex].HasDrawnFromDiscard = false;
+        players[localSeatIndex].DrawnDiscardTile = null;
+        hasDrawnTileThisTurn = false;
+
+        if (uiManager != null)
+        {
+            uiManager.RefreshHand(players[localSeatIndex].Hand);
+            uiManager.SetLeftDiscardTile(returnedTile, true);
+            uiManager.SetDeckButtonState(deckManager != null && deckManager.RemainingCount > 0);
+            uiManager.SetLeftDiscardButtonState(true);
+        }
+
+        Debug.Log($"[GameManager] Soldan alınan {returnedTile} taşı geri bırakıldı. Şimdi desteden taş çekebilirsiniz.");
     }
 
     public void OnAutoSortClicked()
@@ -329,29 +368,13 @@ public class GameManager : MonoBehaviourPunCallbacks
         List<List<Tile>> rawMelds = uiManager.GetMeldsFromIstaka();
         bool manualValid = OkeyRuleEngine.ValidateOpenHand(rawMelds, deckManager.OkeyTile, out int totalPoints, out string manualError);
 
-        List<List<Tile>> meldsToOpen = null;
-        int finalPoints = 0;
-
-        if (manualValid && totalPoints >= OkeyRuleEngine.OpenHandThreshold)
+        if (!manualValid || totalPoints < OkeyRuleEngine.OpenHandThreshold)
         {
-            meldsToOpen = rawMelds;
-            finalPoints = totalPoints;
+            Debug.LogWarning($"[GameManager] El açma başarısız: {manualError} (Istakanızdaki perlerin puan toplamı: {totalPoints} / Gerekli: 101). Lütfen ıstakanızda perlerin arasına boşluk bırakarak doğru perler diziniz.");
+            return;
         }
-        else
-        {
-            OkeyRuleEngine.FindOptimalMelds(players[localSeatIndex].Hand, deckManager.OkeyTile, out int autoPoints, out List<List<Tile>> autoMelds);
 
-            if (autoPoints >= OkeyRuleEngine.OpenHandThreshold && autoMelds.Count > 0)
-            {
-                meldsToOpen = autoMelds;
-                finalPoints = autoPoints;
-            }
-            else
-            {
-                Debug.LogWarning($"[GameManager] El açma başarısız: 101 barajı aşılamadı! (Eldeki en yüksek per puanı: {autoPoints} / Gerekli: 101)");
-                return;
-            }
-        }
+        List<List<Tile>> meldsToOpen = rawMelds;
 
         // YANDAN TAŞ ALINDIĞINDA O TAŞI KULLANMA ŞARTI KONTROLÜ
         if (players[localSeatIndex].HasDrawnFromDiscard && players[localSeatIndex].DrawnDiscardTile != null)
@@ -368,43 +391,40 @@ public class GameManager : MonoBehaviourPunCallbacks
 
             if (!usedDrawnTile)
             {
-                Debug.LogError($"[GameManager] KURAL İHLALİ: Soldan aldığınız {players[localSeatIndex].DrawnDiscardTile} taşını açtığınız perlerin içinde kullanmak zorundasınız! Bu taş olmadan el açamazsınız.");
+                Debug.LogError($"[GameManager] KURAL İHLALİ: Soldan aldığınız {players[localSeatIndex].DrawnDiscardTile} taşını açtığınız perlerin içinde kullanmak zorundasınız! Bu taş olmadan el açamazsınız. (Açmayacaksanız sol taşa tıklayarak geri bırakınız).");
                 return;
             }
         }
 
-        if (meldsToOpen != null && meldsToOpen.Count > 0)
+        Debug.Log($"[GameManager] Tebrikler! Istakanızda dizdiğiniz perler ile 101 barajı aşıldı ({totalPoints} Puan), el masaya açılıyor.");
+
+        List<Meld> newOpenedMelds = new List<Meld>();
+        foreach (var tileGroup in meldsToOpen)
         {
-            Debug.Log($"[GameManager] Tebrikler! 101 barajı aşıldı ({finalPoints} Puan), el masaya açılıyor.");
+            MeldType type = OkeyRuleEngine.CheckGroupPer(tileGroup, deckManager.OkeyTile) ? MeldType.Group : MeldType.Sequence;
+            int points = OkeyRuleEngine.CalculateMeldPoints(tileGroup, deckManager.OkeyTile);
+            Meld m = new Meld(tileGroup, type, points);
+            newOpenedMelds.Add(m);
+            tableMelds.Add(m);
+            players[localSeatIndex].OpenedMelds.Add(m);
 
-            List<Meld> newOpenedMelds = new List<Meld>();
-            foreach (var tileGroup in meldsToOpen)
+            foreach (var tile in tileGroup)
             {
-                MeldType type = OkeyRuleEngine.CheckGroupPer(tileGroup, deckManager.OkeyTile) ? MeldType.Group : MeldType.Sequence;
-                int points = OkeyRuleEngine.CalculateMeldPoints(tileGroup, deckManager.OkeyTile);
-                Meld m = new Meld(tileGroup, type, points);
-                newOpenedMelds.Add(m);
-                tableMelds.Add(m);
-                players[localSeatIndex].OpenedMelds.Add(m);
-
-                foreach (var tile in tileGroup)
-                {
-                    players[localSeatIndex].RemoveTile(tile);
-                }
+                players[localSeatIndex].RemoveTile(tile);
             }
+        }
 
-            players[localSeatIndex].HasOpenedHand = true;
-            players[localSeatIndex].HasOpenedPairs = false;
-            players[localSeatIndex].HasDrawnFromDiscard = false;
-            players[localSeatIndex].DrawnDiscardTile = null;
+        players[localSeatIndex].HasOpenedHand = true;
+        players[localSeatIndex].HasOpenedPairs = false;
+        players[localSeatIndex].HasDrawnFromDiscard = false;
+        players[localSeatIndex].DrawnDiscardTile = null;
 
-            uiManager.RefreshHand(players[localSeatIndex].Hand);
-            uiManager.DrawOpenedMeldsOnTable(tableMelds);
+        uiManager.RefreshHand(players[localSeatIndex].Hand);
+        uiManager.DrawOpenedMeldsOnTable(tableMelds);
 
-            if (isOnlineGame)
-            {
-                photonView.RPC(nameof(RPC_OnPlayerOpenedMelds), RpcTarget.Others, localSeatIndex, Meld.SerializeMelds(newOpenedMelds), false);
-            }
+        if (isOnlineGame)
+        {
+            photonView.RPC(nameof(RPC_OnPlayerOpenedMelds), RpcTarget.Others, localSeatIndex, Meld.SerializeMelds(newOpenedMelds), false);
         }
     }
 
@@ -412,14 +432,67 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         if (isGameOver || deckManager == null || players[localSeatIndex] == null) return;
 
-        if (OkeyRuleEngine.ValidateOpenPairs(players[localSeatIndex].Hand, deckManager.OkeyTile, out List<Meld> pairsToOpen, out string error))
+        Player player = players[localSeatIndex];
+
+        // 1. Zaten el açmış oyuncunun elindeki çiftleri açması
+        if (player.HasOpenedHand)
         {
-            if (players[localSeatIndex].HasDrawnFromDiscard && players[localSeatIndex].DrawnDiscardTile != null)
+            if (OkeyRuleEngine.DetectPairs(player.Hand, deckManager.OkeyTile, out List<Meld> remainingPairs) && remainingPairs.Count > 0)
+            {
+                if (player.HasDrawnFromDiscard && player.DrawnDiscardTile != null)
+                {
+                    bool usedDrawnTile = remainingPairs.Exists(p => p.Tiles.Exists(t => t == player.DrawnDiscardTile || t.IsSame(player.DrawnDiscardTile)));
+                    if (!usedDrawnTile)
+                    {
+                        Debug.LogError($"[GameManager] KURAL İHLALİ: Soldan aldığınız {player.DrawnDiscardTile} taşını açtığınız çiftlerin içinde kullanmak zorundasınız!");
+                        return;
+                    }
+                }
+
+                Debug.Log($"[GameManager] Tebrikler! Elinizdeki {remainingPairs.Count} adet çifti masaya eklediniz.");
+
+                foreach (var pairMeld in remainingPairs)
+                {
+                    tableMelds.Add(pairMeld);
+                    player.OpenedMelds.Add(pairMeld);
+
+                    foreach (var tile in pairMeld.Tiles)
+                    {
+                        player.RemoveTile(tile);
+                    }
+                }
+
+                player.HasDrawnFromDiscard = false;
+                player.DrawnDiscardTile = null;
+
+                if (uiManager != null)
+                {
+                    uiManager.RefreshHand(player.Hand);
+                    uiManager.DrawOpenedMeldsOnTable(tableMelds);
+                }
+
+                if (isOnlineGame)
+                {
+                    photonView.RPC(nameof(RPC_OnPlayerOpenedMelds), RpcTarget.Others, localSeatIndex, Meld.SerializeMelds(remainingPairs), true);
+                }
+                return;
+            }
+            else
+            {
+                Debug.LogWarning("[GameManager] Elinizde masaya açılabilecek geçerli bir çift bulunamadı!");
+                return;
+            }
+        }
+
+        // 2. İlk defa çift açan oyuncu (en az 5 çift gerekli)
+        if (OkeyRuleEngine.ValidateOpenPairs(player.Hand, deckManager.OkeyTile, out List<Meld> pairsToOpen, out string error))
+        {
+            if (player.HasDrawnFromDiscard && player.DrawnDiscardTile != null)
             {
                 bool usedDrawnTile = false;
                 foreach (var p in pairsToOpen)
                 {
-                    if (p.Tiles.Exists(t => t == players[localSeatIndex].DrawnDiscardTile || t.IsSame(players[localSeatIndex].DrawnDiscardTile)))
+                    if (p.Tiles.Exists(t => t == player.DrawnDiscardTile || t.IsSame(player.DrawnDiscardTile)))
                     {
                         usedDrawnTile = true;
                         break;
@@ -428,7 +501,7 @@ public class GameManager : MonoBehaviourPunCallbacks
 
                 if (!usedDrawnTile)
                 {
-                    Debug.LogError($"[GameManager] KURAL İHLALİ: Soldan aldığınız {players[localSeatIndex].DrawnDiscardTile} taşını açtığınız çiftlerin içinde kullanmak zorundasınız!");
+                    Debug.LogError($"[GameManager] KURAL İHLALİ: Soldan aldığınız {player.DrawnDiscardTile} taşını açtığınız çiftlerin içinde kullanmak zorundasınız!");
                     return;
                 }
             }
@@ -438,22 +511,22 @@ public class GameManager : MonoBehaviourPunCallbacks
             foreach (var pairMeld in pairsToOpen)
             {
                 tableMelds.Add(pairMeld);
-                players[localSeatIndex].OpenedMelds.Add(pairMeld);
+                player.OpenedMelds.Add(pairMeld);
 
                 foreach (var tile in pairMeld.Tiles)
                 {
-                    players[localSeatIndex].RemoveTile(tile);
+                    player.RemoveTile(tile);
                 }
             }
 
-            players[localSeatIndex].HasOpenedHand = true;
-            players[localSeatIndex].HasOpenedPairs = true;
-            players[localSeatIndex].HasDrawnFromDiscard = false;
-            players[localSeatIndex].DrawnDiscardTile = null;
+            player.HasOpenedHand = true;
+            player.HasOpenedPairs = true;
+            player.HasDrawnFromDiscard = false;
+            player.DrawnDiscardTile = null;
 
             if (uiManager != null)
             {
-                uiManager.RefreshHand(players[localSeatIndex].Hand);
+                uiManager.RefreshHand(player.Hand);
                 uiManager.DrawOpenedMeldsOnTable(tableMelds);
             }
 
@@ -528,7 +601,7 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         if (!CanPlayerDiscard())
         {
-            Debug.LogError("[GameManager] KURAL İHLALİ: Soldan taş aldığınız için bu tur o taşı kullanarak elinizi açmak veya masaya işlemek zorundasınız! Taş atamazsınız.");
+            Debug.LogError("[GameManager] KURAL İHLALİ: Soldan taş aldığınız için bu tur o taşı kullanarak elinizi açmak veya masaya işlemek zorundasınız! Açmayacaksanız soldaki butona tıklayıp taşı geri koyunuz.");
             if (uiManager != null)
             {
                 uiManager.RefreshHand(players[localSeatIndex].Hand);
@@ -592,7 +665,6 @@ public class GameManager : MonoBehaviourPunCallbacks
             _ => "NORMAL BİTTİ! (-101 Puan)"
         };
 
-        // KONSOLA AYRINTILI CEZA VE SKOR RAPORU YAZDIRMA (DEBUG.LOGWARNING İLE BELİRGİN)
         StringBuilder sb = new StringBuilder();
         sb.AppendLine("\n=======================================================");
         sb.AppendLine($"🏆 [101 OKEY EL SONU VE CEZA RAPORU]");
@@ -661,7 +733,7 @@ public class GameManager : MonoBehaviourPunCallbacks
                 {
                     uiManager.SetDeckButtonState(deckManager != null && deckManager.RemainingCount > 0);
                     Tile leftTile = lastDiscardedTileByLeftPlayer;
-                    bool canDrawLeft = (leftTile != null && OkeyRuleEngine.CanDrawFromDiscard(players[localSeatIndex], leftTile, deckManager?.OkeyTile, tableMelds, out _));
+                    bool canDrawLeft = (leftTile != null);
                     uiManager.SetLeftDiscardTile(leftTile, canDrawLeft);
                     uiManager.SetLeftDiscardButtonState(canDrawLeft);
                 }
@@ -694,8 +766,7 @@ public class GameManager : MonoBehaviourPunCallbacks
 
                         if (activePlayerIndex == 3 && uiManager != null)
                         {
-                            bool canDraw = OkeyRuleEngine.CanDrawFromDiscard(players[0], botDiscard, deckManager?.OkeyTile, tableMelds, out _);
-                            uiManager.SetLeftDiscardTile(botDiscard, canDraw);
+                            uiManager.SetLeftDiscardTile(botDiscard, true);
                         }
 
                         if (players[activePlayerIndex].Hand.Count == 0 && players[activePlayerIndex].HasOpenedHand)
@@ -792,8 +863,7 @@ public class GameManager : MonoBehaviourPunCallbacks
         int myLeftSeat = (localSeatIndex + 3) % 4;
         if (fromSeatIndex == myLeftSeat && uiManager != null)
         {
-            bool canDraw = OkeyRuleEngine.CanDrawFromDiscard(players[localSeatIndex], discarded, deckManager?.OkeyTile, tableMelds, out _);
-            uiManager.SetLeftDiscardTile(discarded, canDraw && (currentPlayerIndex == localSeatIndex));
+            uiManager.SetLeftDiscardTile(discarded, currentPlayerIndex == localSeatIndex);
         }
     }
 

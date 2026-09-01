@@ -28,6 +28,20 @@ public class TableView : MonoBehaviour
     private void Start()
     {
         SetLeftDiscardTile(null, false);
+
+        if (leftDiscardButton != null)
+        {
+            leftDiscardButton.onClick.RemoveAllListeners();
+            leftDiscardButton.onClick.AddListener(OnLeftDiscardButtonClicked);
+        }
+    }
+
+    public void OnLeftDiscardButtonClicked()
+    {
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.OnLeftDiscardClicked();
+        }
     }
 
     public void ShowGosterge(Tile gostergeTile)
@@ -83,7 +97,7 @@ public class TableView : MonoBehaviour
 
         if (leftDiscardButton != null)
         {
-            leftDiscardButton.interactable = isInteractable && (tile != null);
+            leftDiscardButton.interactable = isInteractable;
         }
     }
 
@@ -91,7 +105,7 @@ public class TableView : MonoBehaviour
     {
         if (leftDiscardButton != null)
         {
-            leftDiscardButton.interactable = isInteractable && (leftDiscardTileDisplay != null && leftDiscardTileDisplay.gameObject.activeSelf);
+            leftDiscardButton.interactable = isInteractable;
         }
     }
 
@@ -104,7 +118,6 @@ public class TableView : MonoBehaviour
 
         Debug.Log($"[TableView] Masaya toplam {melds.Count} adet per sergileniyor.");
 
-        // 1. Seri & Grup Perleri için Satır Yöneticisi
         GameObject currentRowObj = null;
         float currentRowWidth = 0f;
         int rowIndex = 0;
@@ -176,7 +189,7 @@ public class TableView : MonoBehaviour
         meldRect.sizeDelta = new Vector2(meldWidth, 70f);
 
         Image bgImg = meldObj.AddComponent<Image>();
-        bgImg.color = new Color(0.08f, 0.10f, 0.13f, 0.90f); // Koyu şık çerçeve
+        bgImg.color = new Color(0.08f, 0.10f, 0.13f, 0.90f);
 
         HorizontalLayoutGroup layout = meldObj.AddComponent<HorizontalLayoutGroup>();
         layout.padding = new RectOffset(6, 6, 4, 4);
@@ -208,7 +221,7 @@ public class TableView : MonoBehaviour
         pairRect.sizeDelta = new Vector2(90f, 66f);
 
         Image bgImg = pairObj.AddComponent<Image>();
-        bgImg.color = new Color(0.12f, 0.08f, 0.16f, 0.92f); // Çiftler için özel morumsu/koyu çerçeve
+        bgImg.color = new Color(0.12f, 0.08f, 0.16f, 0.92f);
 
         HorizontalLayoutGroup layout = pairObj.AddComponent<HorizontalLayoutGroup>();
         layout.padding = new RectOffset(4, 4, 3, 3);
