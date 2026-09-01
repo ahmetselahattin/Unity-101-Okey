@@ -632,8 +632,7 @@ public class GameManager : MonoBehaviourPunCallbacks
         hasDrawnTileThisTurn = false;
 
         deckManager = new DeckManager();
-        deckManager.Gosterge = new Tile(gVal, (TileColor)gCol, gFake);
-        deckManager.OkeyTile = new Tile(oVal, (TileColor)oCol, false);
+        deckManager.SetGostergeAndOkey(new Tile(gVal, (TileColor)gCol, gFake), new Tile(oVal, (TileColor)oCol, false));
 
         for (int i = 0; i < 4; i++)
         {
@@ -686,8 +685,7 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         if (turnManager != null)
         {
-            turnManager.CurrentPlayerIndex = activeSeatIndex;
-            turnManager.IsFirstTurn = isFirst;
+            turnManager.SetTurn(activeSeatIndex, isFirst);
         }
 
         HandleTurnChanged(activeSeatIndex);

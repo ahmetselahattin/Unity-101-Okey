@@ -3,8 +3,8 @@ using UnityEngine;
 
 public class TurnManager : MonoBehaviour
 {
-    public int CurrentPlayerIndex { get; private set; } = 0;
-    public bool IsFirstTurn { get; private set; } = true;
+    public int CurrentPlayerIndex { get; set; } = 0;
+    public bool IsFirstTurn { get; set; } = true;
 
     public event Action<int> OnTurnChanged;
 
@@ -14,9 +14,15 @@ public class TurnManager : MonoBehaviour
         IsFirstTurn = true;
     }
 
+    public void SetTurn(int activeIndex, bool isFirst)
+    {
+        CurrentPlayerIndex = activeIndex;
+        IsFirstTurn = isFirst;
+    }
+
     public void StartTurn()
     {
-        Debug.Log($"[TurnManager] Sra u oyuncuda: {CurrentPlayerIndex}");
+        Debug.Log($"[TurnManager] Sıra şu oyuncuda: {CurrentPlayerIndex}");
         OnTurnChanged?.Invoke(CurrentPlayerIndex);
     }
 

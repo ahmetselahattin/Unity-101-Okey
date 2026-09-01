@@ -3,17 +3,22 @@ using System.Collections.Generic;
 
 public class DeckManager
 {
-    public List<Tile> AllTiles { get; private set; } = new List<Tile>();
-    public Tile Gosterge { get; private set; }
-    public Tile OkeyTile { get; private set; }
+    public List<Tile> AllTiles { get; set; } = new List<Tile>();
+    public Tile Gosterge { get; set; }
+    public Tile OkeyTile { get; set; }
 
     public int RemainingCount => AllTiles.Count;
+
+    public void SetGostergeAndOkey(Tile gosterge, Tile okey)
+    {
+        Gosterge = gosterge;
+        OkeyTile = okey;
+    }
 
     public void CreateDeck()
     {
         AllTiles.Clear();
 
-        // 4 Renk iin 2'er deste (1-13) oluturulur = 104 ta
         foreach (TileColor color in Enum.GetValues(typeof(TileColor)))
         {
             for (int val = 1; val <= 13; val++)
@@ -23,7 +28,6 @@ public class DeckManager
             }
         }
 
-        // 2 adet Sahte Okey ta eklenir = Toplam 106 ta
         AllTiles.Add(new Tile(0, TileColor.Yellow, true));
         AllTiles.Add(new Tile(0, TileColor.Yellow, true));
     }
@@ -40,7 +44,6 @@ public class DeckManager
 
     public void DetermineOkey()
     {
-        // Gsterge tan belirle (Sahte okey olmamal)
         for (int i = 0; i < AllTiles.Count; i++)
         {
             if (!AllTiles[i].IsFakeOkey)
@@ -51,7 +54,6 @@ public class DeckManager
             }
         }
 
-        // Okey ta: Gstergenin 1 fazlas ve ayn rengidir (13 ise 1 olur)
         int okeyValue = Gosterge.TileValue == 13 ? 1 : Gosterge.TileValue + 1;
         OkeyTile = new Tile(okeyValue, Gosterge.Color, false);
     }

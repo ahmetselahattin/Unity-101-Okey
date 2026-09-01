@@ -31,11 +31,11 @@ public static class UnityMcpBridge
             _listener.Start();
             _listenerThread = new Thread(ListenForClients) { IsBackground = true };
             _listenerThread.Start();
-            Debug.Log($"[Unity MCP Bridge] Dinleme ba�lad�: 127.0.0.1:{Port}");
+            Debug.Log($"[Unity MCP Bridge] Dinleme başladı: 127.0.0.1:{Port}");
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[Unity MCP Bridge] Ba�latma hatas�: {ex.Message}");
+            Debug.LogError($"[Unity MCP Bridge] Başlatma hatası: {ex.Message}");
         }
     }
 
@@ -68,14 +68,12 @@ public static class UnityMcpBridge
         string request = reader.ReadLine();
         if (string.IsNullOrEmpty(request)) return;
 
-        // Unity API ana thread'de �al��mal�d�r
         string response = "";
         EditorApplication.delayCall += () =>
         {
             response = ProcessCommand(request);
         };
 
-        // Cevab�n ana thread'de olu�mas�n� bekle
         int timeout = 0;
         while (string.IsNullOrEmpty(response) && timeout < 50)
         {
@@ -98,12 +96,17 @@ public static class UnityMcpBridge
         if (cmd == "play")
         {
             EditorApplication.isPlaying = true;
-            return "Play moduna ge�ildi";
+            return "Play moduna geçildi";
         }
         if (cmd == "stop")
         {
             EditorApplication.isPlaying = false;
             return "Durduruldu";
+        }
+        if (cmd == "refresh")
+        {
+            AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+            return "Refreshed";
         }
         return "Bilinmeyen komut";
     }
