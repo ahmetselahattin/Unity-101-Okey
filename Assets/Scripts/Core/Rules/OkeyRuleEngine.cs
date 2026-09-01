@@ -291,9 +291,6 @@ public static class OkeyRuleEngine
         return false;
     }
 
-    /// <summary>
-    /// Masadaki herhangi bir pere bu taşın işlenip işlenemeyeceğini denetler.
-    /// </summary>
     public static bool CanProcessTileToAnyMeld(Tile tile, List<Meld> tableMelds, Tile okeyTile, bool playerOpenedPairs)
     {
         if (tile == null || tableMelds == null) return false;
@@ -308,10 +305,6 @@ public static class OkeyRuleEngine
         return false;
     }
 
-    /// <summary>
-    /// 101 Okey Kuralı: Sol oyuncunun attığı taşın yandan çekilip çekilemeyeceğini doğrular.
-    /// Kural: Bu taş ile elinizi açabiliyor (101 barajı / 5 çift) veya masaya işleyebiliyor olmalısınız!
-    /// </summary>
     public static bool CanDrawFromDiscard(Player player, Tile candidateTile, Tile okeyTile, List<Meld> tableMelds, out string reason)
     {
         reason = string.Empty;
@@ -321,7 +314,6 @@ public static class OkeyRuleEngine
             return false;
         }
 
-        // DURUM 1: Oyuncu daha önce elini açmışsa masaya işleyebilmelidir
         if (player.HasOpenedHand)
         {
             if (CanProcessTileToAnyMeld(candidateTile, tableMelds, okeyTile, player.HasOpenedPairs))
@@ -333,10 +325,8 @@ public static class OkeyRuleEngine
             return false;
         }
 
-        // DURUM 2: Oyuncu henüz el açmamışsa, bu taş elini açmaya yetmelidir (101 barajı veya 5 çift)
         List<Tile> tempHand = new List<Tile>(player.Hand) { candidateTile };
 
-        // 2a. Çift kontrolü (5+ çift ve adayın çiftlerden birine girmesi)
         if (DetectPairs(tempHand, okeyTile, out List<Meld> pairs))
         {
             bool tileUsedInPairs = pairs.Exists(p => p.Tiles.Contains(candidateTile));
@@ -346,8 +336,10 @@ public static class OkeyRuleEngine
             }
         }
 
-        // 2b. Seri/Grup per kontrolü (Eldeki olası perleri hızlıca tara)
-        if (CanForm101WithCandidateTile(tempHand, candidateTile, okeyTile, out int possiblePoints))
+        FindOptimalMelds(tempHand, okeyTile, out int totalPoints, out List<List<Tile>> bestMelds);
+        bool candidateUsed = bestMelds.Exists(m => m.Contains(candidateTile));
+
+        if (candidateUsed && totalPoints >= OpenHandThreshold)
         {
             return true;
         }
@@ -357,64 +349,19 @@ public static class OkeyRuleEngine
     }
 
     /// <summary>
-    /// Eldeki taş havuzundan 101 barajını aşan geçerli bir per kombinasyonu kurulup kurulamayacağını analiz eder.
+    /// Verilen taş listesinden çakışmayan en yüksek puanlı geçerli perleri (Seri & Grup) akıllıca bulur.
     /// </summary>
-    private static bool CanForm101WithCandidateTile(List<Tile> hand, Tile candidateTile, Tile okeyTile, out int totalPoints)
+    public static void FindOptimalMelds(List<Tile> hand, Tile okeyTile, out int totalPoints, out List<List<Tile>> bestMelds)
     {
         totalPoints = 0;
-        if (hand == null || hand.Count < 3) return false;
+        bestMelds = new List<List<Tile>>();
+        if (hand == null || hand.Count < 3) return;
 
-        // Basit ve güvenilir per tarama: Renklerine göre seriler ve sayılarına göre gruplar
-        List<List<Tile>> candidateMelds = ExtractAllPossibleMelds(hand, okeyTile);
+        List<Tile> remaining = new List<Tile>(hand);
 
-        // Aday taşın bu perlerden birinde yer aldığından emin ol
-        bool candidateIncluded = false;
-        foreach (var meld in candidateMelds)
-        {
-            if (meld.Contains(candidateTile))
-            {
-                candidateIncluded = true;
-                break;
-            }
-        }
-
-        if (!candidateIncluded) return false;
-
-        totalPoints = CalculateTotalPoints(candidateMelds, okeyTile);
-        return totalPoints >= OpenHandThreshold;
-    }
-
-    private static List<List<Tile>> ExtractAllPossibleMelds(List<Tile> hand, Tile okeyTile)
-    {
-        List<List<Tile>> melds = new List<List<Tile>>();
-        // Gruplar: Aynı değer, farklı renkler (3 veya 4'lü)
-        Dictionary<int, List<Tile>> byValue = new Dictionary<int, List<Tile>>();
-        foreach (var t in hand)
-        {
-            int val = t.GetEffectiveValue(okeyTile);
-            if (!byValue.ContainsKey(val)) byValue[val] = new List<Tile>();
-            byValue[val].Add(t);
-        }
-
-        foreach (var kvp in byValue)
-        {
-            if (kvp.Value.Count >= 3)
-            {
-                // Farklı renkleri filtrele
-                HashSet<TileColor> seen = new HashSet<TileColor>();
-                List<Tile> group = new List<Tile>();
-                foreach (var t in kvp.Value)
-                {
-                    if (seen.Add(t.GetEffectiveColor(okeyTile))) group.Add(t);
-                    if (group.Count == 4) break;
-                }
-                if (group.Count >= 3) melds.Add(group);
-            }
-        }
-
-        // Seriler: Aynı renk, ardışık değerler
+        // 1. Önce Serileri Bul (Örn: Kırmızı 7-8-9, Mavi 3-4-5)
         Dictionary<TileColor, List<Tile>> byColor = new Dictionary<TileColor, List<Tile>>();
-        foreach (var t in hand)
+        foreach (var t in remaining)
         {
             TileColor col = t.GetEffectiveColor(okeyTile);
             if (!byColor.ContainsKey(col)) byColor[col] = new List<Tile>();
@@ -426,31 +373,71 @@ public static class OkeyRuleEngine
             List<Tile> colorList = kvp.Value;
             colorList.Sort((a, b) => a.GetEffectiveValue(okeyTile).CompareTo(b.GetEffectiveValue(okeyTile)));
 
-            List<Tile> seq = new List<Tile>();
+            List<Tile> currentSeq = new List<Tile>();
             for (int i = 0; i < colorList.Count; i++)
             {
-                if (seq.Count == 0)
+                if (currentSeq.Count == 0)
                 {
-                    seq.Add(colorList[i]);
+                    currentSeq.Add(colorList[i]);
                 }
                 else
                 {
-                    int diff = colorList[i].GetEffectiveValue(okeyTile) - seq[seq.Count - 1].GetEffectiveValue(okeyTile);
+                    int diff = colorList[i].GetEffectiveValue(okeyTile) - currentSeq[currentSeq.Count - 1].GetEffectiveValue(okeyTile);
                     if (diff == 1)
                     {
-                        seq.Add(colorList[i]);
+                        currentSeq.Add(colorList[i]);
                     }
                     else if (diff > 1)
                     {
-                        if (seq.Count >= 3) melds.Add(new List<Tile>(seq));
-                        seq.Clear();
-                        seq.Add(colorList[i]);
+                        if (currentSeq.Count >= 3)
+                        {
+                            bestMelds.Add(new List<Tile>(currentSeq));
+                            foreach (var t in currentSeq) remaining.Remove(t);
+                        }
+                        currentSeq.Clear();
+                        currentSeq.Add(colorList[i]);
                     }
                 }
             }
-            if (seq.Count >= 3) melds.Add(seq);
+            if (currentSeq.Count >= 3)
+            {
+                bestMelds.Add(new List<Tile>(currentSeq));
+                foreach (var t in currentSeq) remaining.Remove(t);
+            }
         }
 
-        return melds;
+        // 2. Kalan Taşlardan Grupları Bul (Örn: 8-8-8 farklı renkler)
+        Dictionary<int, List<Tile>> byValue = new Dictionary<int, List<Tile>>();
+        foreach (var t in remaining)
+        {
+            int val = t.GetEffectiveValue(okeyTile);
+            if (!byValue.ContainsKey(val)) byValue[val] = new List<Tile>();
+            byValue[val].Add(t);
+        }
+
+        foreach (var kvp in byValue)
+        {
+            if (kvp.Value.Count >= 3)
+            {
+                HashSet<TileColor> seen = new HashSet<TileColor>();
+                List<Tile> group = new List<Tile>();
+                foreach (var t in kvp.Value)
+                {
+                    if (seen.Add(t.GetEffectiveColor(okeyTile)))
+                    {
+                        group.Add(t);
+                        if (group.Count == 4) break;
+                    }
+                }
+
+                if (group.Count >= 3)
+                {
+                    bestMelds.Add(group);
+                    foreach (var t in group) remaining.Remove(t);
+                }
+            }
+        }
+
+        totalPoints = CalculateTotalPoints(bestMelds, okeyTile);
     }
 }

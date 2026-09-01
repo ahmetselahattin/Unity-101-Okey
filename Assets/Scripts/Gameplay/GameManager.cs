@@ -32,7 +32,7 @@ public class GameManager : MonoBehaviour
 
     [Header("Masa Durumu ve Kurallar")]
     public List<Meld> tableMelds = new List<Meld>();
-    public Tile lastDiscardedTileByLeftPlayer = null;
+    public Tile[] lastDiscardedTiles = new Tile[4]; // Her koltuğun son attığı taş
     public bool hasDrawnTileThisTurn = false;
     public bool isGameOver = false;
 
@@ -40,6 +40,9 @@ public class GameManager : MonoBehaviour
 
     public int currentPlayerIndex => turnManager != null ? turnManager.CurrentPlayerIndex : 0;
     public bool isFirstTurn => turnManager != null ? turnManager.IsFirstTurn : true;
+
+    // Oyuncu 0'ın solundaki (Bot 3'ün) attığı taş
+    public Tile lastDiscardedTileByLeftPlayer => lastDiscardedTiles[3];
 
     private void Awake()
     {
@@ -89,7 +92,7 @@ public class GameManager : MonoBehaviour
         if (centerStone != null) centerStone.SetActive(true);
 
         tableMelds.Clear();
-        lastDiscardedTileByLeftPlayer = null;
+        for (int i = 0; i < 4; i++) lastDiscardedTiles[i] = null;
         hasDrawnTileThisTurn = false;
 
         for (int i = 0; i < 4; i++)
@@ -115,6 +118,7 @@ public class GameManager : MonoBehaviour
         {
             uiManager.DrawPlayerHand(players[0].Hand);
             uiManager.SetLeftDiscardTile(null, false);
+            uiManager.DrawOpenedMeldsOnTable(tableMelds);
             if (uiManager.scoreboardUI != null) uiManager.scoreboardUI.Hide();
         }
 
@@ -170,10 +174,6 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Sol oyuncunun attığı taşı (yandan taş) alma işlemi.
-    /// Kural: Bu taş ile elinizi açabiliyor (101 barajı / 5 çift) veya masaya işleyebiliyor olmalısınız!
-    /// </summary>
     public void DrawTileFromLeftDiscard()
     {
         if (isGameOver || currentPlayerIndex != 0) return;
@@ -184,35 +184,34 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        if (lastDiscardedTileByLeftPlayer == null)
+        Tile leftTile = lastDiscardedTileByLeftPlayer;
+        if (leftTile == null)
         {
             Debug.LogWarning("[GameManager] Yandan alınacak taş yok!");
             return;
         }
 
-        // 101 KURAL DOĞRULAMASI: Bu taşla el açılabilir veya işlenebilir mi?
-        if (!OkeyRuleEngine.CanDrawFromDiscard(players[0], lastDiscardedTileByLeftPlayer, deckManager.OkeyTile, tableMelds, out string ruleReason))
+        if (!OkeyRuleEngine.CanDrawFromDiscard(players[0], leftTile, deckManager.OkeyTile, tableMelds, out string ruleReason))
         {
             Debug.LogWarning($"[GameManager] {ruleReason}");
             return;
         }
 
-        Tile drawnTile = lastDiscardedTileByLeftPlayer;
-        lastDiscardedTileByLeftPlayer = null;
+        lastDiscardedTiles[3] = null;
 
-        players[0].AddTile(drawnTile);
+        players[0].AddTile(leftTile);
         players[0].HasDrawnFromDiscard = true;
         hasDrawnTileThisTurn = true;
 
         if (uiManager != null)
         {
-            uiManager.AddSingleTileToHand(drawnTile);
+            uiManager.AddSingleTileToHand(leftTile);
             uiManager.SetLeftDiscardTile(null, false);
             uiManager.SetDeckButtonState(false);
             uiManager.SetLeftDiscardButtonState(false);
         }
 
-        Debug.Log($"[GameManager] Yandan taş başarıyla alındı: {drawnTile}. (DİKKAT: Bu tur elinizi açmak/işlemek zorundasınız!)");
+        Debug.Log($"[GameManager] Yandan taş başarıyla alındı: {leftTile}. (DİKKAT: Bu tur elinizi açmak/işlemek zorundasınız!)");
     }
 
     public void OnAutoSortClicked()
@@ -329,7 +328,7 @@ public class GameManager : MonoBehaviour
             }
 
             players[0].RemoveTile(tile);
-            players[0].HasDrawnFromDiscard = false; // Yandan alınan taş işlendiyse kural sağlandı!
+            players[0].HasDrawnFromDiscard = false;
 
             if (uiManager != null)
             {
@@ -349,8 +348,6 @@ public class GameManager : MonoBehaviour
     {
         if (isGameOver || currentPlayerIndex != 0) return false;
         if (!hasDrawnTileThisTurn && !isFirstTurn) return false;
-
-        // Yandan taş alıp elini açmamış / işlememiş oyuncu taş atamaz!
         if (players[0].HasDrawnFromDiscard) return false;
 
         return true;
@@ -371,6 +368,7 @@ public class GameManager : MonoBehaviour
         if (discardedTile != null && players[0] != null)
         {
             players[0].RemoveTile(discardedTile);
+            lastDiscardedTiles[0] = discardedTile;
             Debug.Log($"[GameManager] Oyuncu bir taş attı: {discardedTile}");
         }
 
@@ -446,8 +444,9 @@ public class GameManager : MonoBehaviour
                 if (uiManager != null)
                 {
                     uiManager.SetDeckButtonState(true);
-                    bool canDrawLeft = (lastDiscardedTileByLeftPlayer != null);
-                    uiManager.SetLeftDiscardTile(lastDiscardedTileByLeftPlayer, canDrawLeft);
+                    Tile leftTile = lastDiscardedTileByLeftPlayer;
+                    bool canDrawLeft = (leftTile != null && OkeyRuleEngine.CanDrawFromDiscard(players[0], leftTile, deckManager.OkeyTile, tableMelds, out _));
+                    uiManager.SetLeftDiscardTile(leftTile, canDrawLeft);
                     uiManager.SetLeftDiscardButtonState(canDrawLeft);
                 }
             }
@@ -462,24 +461,39 @@ public class GameManager : MonoBehaviour
 
             if (botController != null && players[activePlayerIndex] != null)
             {
-                StartCoroutine(botController.ExecuteBotTurn(players[activePlayerIndex], deckManager, (botDiscard) =>
-                {
-                    if (activePlayerIndex == 3)
-                    {
-                        lastDiscardedTileByLeftPlayer = botDiscard;
-                        if (uiManager != null)
-                        {
-                            uiManager.SetLeftDiscardTile(botDiscard, false);
-                        }
-                    }
+                // Botun solundaki oyuncunun koltuğu: (active - 1 + 4) % 4
+                int leftSeat = (activePlayerIndex + 3) % 4;
+                Tile leftDiscard = lastDiscardedTiles[leftSeat];
 
-                    if (players[activePlayerIndex].Hand.Count == 0 && players[activePlayerIndex].HasOpenedHand)
+                StartCoroutine(botController.ExecuteBotTurn(
+                    players[activePlayerIndex],
+                    deckManager,
+                    leftDiscard,
+                    tableMelds,
+                    () => {
+                        // Masada perler güncellendiğinde UI'ı yenile
+                        if (uiManager != null) uiManager.DrawOpenedMeldsOnTable(tableMelds);
+                    },
+                    (botDiscard) =>
                     {
-                        bool isOkey = OkeyRuleEngine.IsOkeyTile(botDiscard, deckManager.OkeyTile);
-                        FinishType finish = isOkey ? FinishType.Okey : FinishType.Normal;
-                        HandleGameFinished(players[activePlayerIndex], finish);
-                    }
-                }, EndTurn));
+                        lastDiscardedTiles[activePlayerIndex] = botDiscard;
+
+                        // Eğer solumuzdaki bot (Bot 3) taş attıysa, sol taş alanımızda görünsün
+                        if (activePlayerIndex == 3 && uiManager != null)
+                        {
+                            bool canDraw = OkeyRuleEngine.CanDrawFromDiscard(players[0], botDiscard, deckManager.OkeyTile, tableMelds, out _);
+                            uiManager.SetLeftDiscardTile(botDiscard, canDraw);
+                        }
+
+                        // Bot el bitirme kontrolü
+                        if (players[activePlayerIndex].Hand.Count == 0 && players[activePlayerIndex].HasOpenedHand)
+                        {
+                            bool isOkey = OkeyRuleEngine.IsOkeyTile(botDiscard, deckManager.OkeyTile);
+                            FinishType finish = isOkey ? FinishType.Okey : (players[activePlayerIndex].HasOpenedPairs ? FinishType.Pairs : FinishType.Normal);
+                            HandleGameFinished(players[activePlayerIndex], finish);
+                        }
+                    },
+                    EndTurn));
             }
         }
     }
