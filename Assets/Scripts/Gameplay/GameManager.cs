@@ -232,10 +232,9 @@ public class GameManager : MonoBehaviourPunCallbacks
             return;
         }
 
-        // DESTE BİTTİ Mİ KONTROLÜ
         if (deckManager == null || deckManager.RemainingCount <= 0)
         {
-            Debug.Log("[GameManager] Destedeki tüm taşlar bitti! Oyun sona eriyor...");
+            Debug.LogWarning("[GameManager] Destedeki tüm taşlar bitti! Oyun sona eriyor...");
             if (isOnlineGame)
             {
                 photonView.RPC(nameof(RPC_OnGameFinished), RpcTarget.All, -1, (int)FinishType.DeckOut);
@@ -289,7 +288,7 @@ public class GameManager : MonoBehaviourPunCallbacks
 
         players[localSeatIndex].AddTile(leftTile);
         players[localSeatIndex].HasDrawnFromDiscard = true;
-        players[localSeatIndex].DrawnDiscardTile = leftTile; // Soldan çekilen taşı kaydet
+        players[localSeatIndex].DrawnDiscardTile = leftTile;
         hasDrawnTileThisTurn = true;
 
         if (uiManager != null)
@@ -307,11 +306,19 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         if (players[localSeatIndex] != null && deckManager != null)
         {
-            HandSorter.SortByColorAndValue(players[localSeatIndex].Hand, deckManager.OkeyTile);
+            HandSorter.ArrangeHandSmartly(
+                players[localSeatIndex].Hand,
+                deckManager.OkeyTile,
+                out var bestMelds,
+                out var remTiles,
+                out var istakaLayout);
+
             if (uiManager != null)
             {
-                uiManager.RefreshHand(players[localSeatIndex].Hand);
+                uiManager.DrawArrangedHand(istakaLayout);
             }
+
+            Debug.Log($"[GameManager] Taşlar akıllıca dizildi! ({bestMelds.Count} per tespit edildi, perler aralıklı yerleştirildi, kalan {remTiles.Count} taş sona dizildi).");
         }
     }
 
@@ -407,7 +414,6 @@ public class GameManager : MonoBehaviourPunCallbacks
 
         if (OkeyRuleEngine.ValidateOpenPairs(players[localSeatIndex].Hand, deckManager.OkeyTile, out List<Meld> pairsToOpen, out string error))
         {
-            // Yandan taş alındıysa çiftlerin içinde kullanıldı mı?
             if (players[localSeatIndex].HasDrawnFromDiscard && players[localSeatIndex].DrawnDiscardTile != null)
             {
                 bool usedDrawnTile = false;
@@ -482,7 +488,6 @@ public class GameManager : MonoBehaviourPunCallbacks
 
             players[localSeatIndex].RemoveTile(tile);
 
-            // Eğer işlenen taş yandan çekilen taş ise kural yerine getirildi
             if (players[localSeatIndex].HasDrawnFromDiscard && 
                 (tile == players[localSeatIndex].DrawnDiscardTile || tile.IsSame(players[localSeatIndex].DrawnDiscardTile)))
             {
@@ -514,7 +519,6 @@ public class GameManager : MonoBehaviourPunCallbacks
         if (isGameOver || currentPlayerIndex != localSeatIndex) return false;
         if (!hasDrawnTileThisTurn && !isFirstTurn) return false;
 
-        // Yandan taş alıp o taşı kullanmayan/açmayan oyuncu taş atamaz!
         if (players[localSeatIndex].HasDrawnFromDiscard) return false;
 
         return true;
@@ -588,7 +592,7 @@ public class GameManager : MonoBehaviourPunCallbacks
             _ => "NORMAL BİTTİ! (-101 Puan)"
         };
 
-        // KONSOLA AYRINTILI CEZA VE SKOR RAPORU YAZDIRMA
+        // KONSOLA AYRINTILI CEZA VE SKOR RAPORU YAZDIRMA (DEBUG.LOGWARNING İLE BELİRGİN)
         StringBuilder sb = new StringBuilder();
         sb.AppendLine("\n=======================================================");
         sb.AppendLine($"🏆 [101 OKEY EL SONU VE CEZA RAPORU]");
@@ -604,7 +608,7 @@ public class GameManager : MonoBehaviourPunCallbacks
         }
         sb.AppendLine("=======================================================\n");
 
-        Debug.Log(sb.ToString());
+        Debug.LogWarning(sb.ToString());
 
         if (uiManager != null)
         {
@@ -620,10 +624,9 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         if (isGameOver) return;
 
-        // Destedeki taş kontrolü
         if (deckManager != null && deckManager.RemainingCount <= 0)
         {
-            Debug.Log("[GameManager] Deste tükendi, oyun bitiyor.");
+            Debug.LogWarning("[GameManager] Deste tükendi, oyun bitiyor.");
             HandleGameFinished(null, FinishType.DeckOut);
             return;
         }

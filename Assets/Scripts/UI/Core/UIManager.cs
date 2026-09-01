@@ -94,6 +94,14 @@ public class UIManager : MonoBehaviour
         }
     }
 
+    public void DrawArrangedHand(Tile[] slotLayout)
+    {
+        if (istakaController != null)
+        {
+            istakaController.DrawArrangedHand(slotLayout);
+        }
+    }
+
     public void AddSingleTileToHand(Tile tileData)
     {
         if (istakaController != null)

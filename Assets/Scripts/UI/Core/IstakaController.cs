@@ -56,6 +56,30 @@ public class IstakaController : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Perleri aralıklı ve akıllıca dizilmiş 42 slotluk yerleşimi ıstakaya çizer.
+    /// </summary>
+    public void DrawArrangedHand(Tile[] slotLayout)
+    {
+        ClearTilesOnly();
+
+        if (slotLayout == null) return;
+
+        for (int i = 0; i < slotLayout.Length && i < istakaSlots.Count; i++)
+        {
+            if (slotLayout[i] != null && TilePrefab != null)
+            {
+                GameObject tileObj = Instantiate(TilePrefab, istakaSlots[i]);
+                TileDisplay display = tileObj.GetComponent<TileDisplay>();
+                if (display != null)
+                {
+                    display.CanFlip = true;
+                    display.SetTile(slotLayout[i]);
+                }
+            }
+        }
+    }
+
     public void AddSingleTile(Tile tileData)
     {
         if (tileData == null || TilePrefab == null) return;
