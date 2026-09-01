@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 public static class OkeyRuleEngine
 {
@@ -16,27 +17,38 @@ public static class OkeyRuleEngine
     {
         if (tileList == null || tileList.Count < 3 || tileList.Count > 4) return false;
 
-        List<Tile> normalTiles = new List<Tile>();
+        int targetValue = -1;
+        HashSet<TileColor> seenColors = new HashSet<TileColor>();
         int okeyCount = 0;
 
         foreach (Tile t in tileList)
         {
-            if (IsOkeyTile(t, okeyTile)) okeyCount++;
-            else normalTiles.Add(t);
+            if (IsOkeyTile(t, okeyTile))
+            {
+                okeyCount++;
+            }
+            else
+            {
+                int val = t.GetEffectiveValue(okeyTile);
+                if (targetValue == -1)
+                {
+                    targetValue = val;
+                }
+                else if (targetValue != val)
+                {
+                    return false;
+                }
+
+                TileColor col = t.GetEffectiveColor(okeyTile);
+                if (seenColors.Contains(col))
+                {
+                    return false;
+                }
+                seenColors.Add(col);
+            }
         }
 
-        if (normalTiles.Count <= 1) return true;
-
-        int expectedValue = normalTiles[0].GetEffectiveValue(okeyTile);
-        HashSet<TileColor> usedColors = new HashSet<TileColor>();
-
-        foreach (Tile t in normalTiles)
-        {
-            if (t.GetEffectiveValue(okeyTile) != expectedValue) return false;
-            if (!usedColors.Add(t.GetEffectiveColor(okeyTile))) return false;
-        }
-
-        return true;
+        return (seenColors.Count + okeyCount == tileList.Count) && (seenColors.Count + okeyCount <= 4);
     }
 
     public static bool CheckSequencePer(List<Tile> tileList, Tile okeyTile)
@@ -66,101 +78,89 @@ public static class OkeyRuleEngine
             if (i > 0)
             {
                 int diff = normalTiles[i].GetEffectiveValue(okeyTile) - normalTiles[i - 1].GetEffectiveValue(okeyTile);
-                if (diff <= 0) return false; // Aynı taştan 2 tane olamaz
+                if (diff <= 0) return false;
                 requiredOkeys += (diff - 1);
             }
         }
 
-        return requiredOkeys <= okeyCount;
+        int minV = normalTiles[0].GetEffectiveValue(okeyTile);
+        int maxV = normalTiles[normalTiles.Count - 1].GetEffectiveValue(okeyTile);
+        int totalSpan = (maxV - minV + 1) + (okeyCount - requiredOkeys);
+
+        return (requiredOkeys <= okeyCount) && (totalSpan <= 13);
     }
 
-    public static bool DetectPairs(List<Tile> hand, Tile okeyTile, out List<Meld> detectedPairs)
+    public static int CalculateMeldPoints(List<Tile> meld, Tile okeyTile)
     {
-        detectedPairs = new List<Meld>();
-        if (hand == null || hand.Count < 2) return false;
+        if (meld == null || meld.Count == 0) return 0;
 
-        List<Tile> pool = new List<Tile>(hand);
-        List<Tile> okeys = new List<Tile>();
-        List<Tile> normals = new List<Tile>();
-
-        foreach (var t in pool)
+        if (CheckGroupPer(meld, okeyTile))
         {
-            if (IsOkeyTile(t, okeyTile)) okeys.Add(t);
-            else normals.Add(t);
+            Tile normalTile = meld.Find(t => !IsOkeyTile(t, okeyTile));
+            int val = (normalTile != null) ? normalTile.GetEffectiveValue(okeyTile) : (okeyTile != null ? okeyTile.TileValue : 1);
+            return val * meld.Count;
         }
 
-        normals.Sort((a, b) =>
+        if (CheckSequencePer(meld, okeyTile))
         {
-            int c = a.GetEffectiveColor(okeyTile).CompareTo(b.GetEffectiveColor(okeyTile));
-            return c != 0 ? c : a.GetEffectiveValue(okeyTile).CompareTo(b.GetEffectiveValue(okeyTile));
-        });
+            List<Tile> normalTiles = new List<Tile>();
+            int okeyCount = 0;
 
-        bool[] used = new bool[normals.Count];
-        for (int i = 0; i < normals.Count - 1; i++)
-        {
-            if (used[i]) continue;
-
-            for (int j = i + 1; j < normals.Count; j++)
+            foreach (var t in meld)
             {
-                if (used[j]) continue;
-
-                if (normals[i].GetEffectiveColor(okeyTile) == normals[j].GetEffectiveColor(okeyTile) &&
-                    normals[i].GetEffectiveValue(okeyTile) == normals[j].GetEffectiveValue(okeyTile) &&
-                    normals[i].GetEffectiveValue(okeyTile) > 0)
-                {
-                    used[i] = true;
-                    used[j] = true;
-                    int points = normals[i].GetEffectiveValue(okeyTile) * 2;
-                    detectedPairs.Add(new Meld(new List<Tile> { normals[i], normals[j] }, MeldType.Pair, points));
-                    break;
-                }
+                if (IsOkeyTile(t, okeyTile)) okeyCount++;
+                else normalTiles.Add(t);
             }
-        }
 
-        for (int i = 0; i < normals.Count; i++)
-        {
-            if (!used[i] && okeys.Count > 0)
+            if (normalTiles.Count == 0)
             {
-                used[i] = true;
-                Tile joker = okeys[0];
-                okeys.RemoveAt(0);
-                int points = normals[i].GetEffectiveValue(okeyTile) * 2;
-                detectedPairs.Add(new Meld(new List<Tile> { normals[i], joker }, MeldType.Pair, points));
+                int oVal = (okeyTile != null) ? okeyTile.TileValue : 1;
+                return oVal * meld.Count;
             }
+
+            normalTiles.Sort((a, b) => a.GetEffectiveValue(okeyTile).CompareTo(b.GetEffectiveValue(okeyTile)));
+
+            int minV = normalTiles[0].GetEffectiveValue(okeyTile);
+            int maxV = normalTiles[normalTiles.Count - 1].GetEffectiveValue(okeyTile);
+
+            int insideGaps = (maxV - minV + 1) - normalTiles.Count;
+            int remainingOkeys = Mathf.Max(0, okeyCount - insideGaps);
+
+            int highCapacity = Mathf.Max(0, 13 - maxV);
+            int okeysAtHigh = Mathf.Min(remainingOkeys, highCapacity);
+            int okeysAtLow = remainingOkeys - okeysAtHigh;
+
+            int startVal = Mathf.Max(1, minV - okeysAtLow);
+            int sum = 0;
+            for (int i = 0; i < meld.Count; i++)
+            {
+                sum += (startVal + i);
+            }
+            return sum;
         }
 
-        while (okeys.Count >= 2)
-        {
-            Tile j1 = okeys[0];
-            Tile j2 = okeys[1];
-            okeys.RemoveRange(0, 2);
-            int points = okeyTile.TileValue * 2;
-            detectedPairs.Add(new Meld(new List<Tile> { j1, j2 }, MeldType.Pair, points));
-        }
-
-        return detectedPairs.Count >= MinPairsToOpen;
+        return 0;
     }
 
-    public static bool ValidateOpenPairs(List<Tile> hand, Tile okeyTile, out List<Meld> pairsToOpen, out string error)
+    public static int CalculateTotalPoints(List<List<Tile>> melds, Tile okeyTile)
     {
-        error = string.Empty;
-        if (DetectPairs(hand, okeyTile, out pairsToOpen))
+        if (melds == null) return 0;
+        int total = 0;
+        foreach (var meld in melds)
         {
-            return true;
+            total += CalculateMeldPoints(meld, okeyTile);
         }
-
-        error = $"Çift açabilmek için en az {MinPairsToOpen} çift gereklidir! Mevcut çift sayısı: {pairsToOpen.Count}";
-        return false;
+        return total;
     }
 
     public static bool ValidateOpenHand(List<List<Tile>> melds, Tile okeyTile, out int totalPoints, out string error)
     {
         totalPoints = 0;
-        error = string.Empty;
+        error = "";
 
         if (melds == null || melds.Count == 0)
         {
-            error = "Istakada açılacak geçerli bir per grubu bulunamadı!";
+            error = "Açılacak geçerli per bulunamadı!";
             return false;
         }
 
@@ -180,108 +180,140 @@ public static class OkeyRuleEngine
 
         if (totalPoints < OpenHandThreshold)
         {
-            error = $"101 barajı aşılamadı! Toplam Puan: {totalPoints} / Gerekli: {OpenHandThreshold}";
+            error = $"Toplam puan {totalPoints}, baraj olan {OpenHandThreshold} puanı geçmedi!";
             return false;
         }
 
         return true;
     }
 
-    public static int CalculateMeldPoints(List<Tile> meld, Tile okeyTile)
+    public static bool ValidateOpenPairs(List<Tile> hand, Tile okeyTile, out List<Meld> pairsToOpen, out string error)
     {
-        if (meld == null || meld.Count == 0) return 0;
+        pairsToOpen = new List<Meld>();
+        error = "";
 
-        if (CheckGroupPer(meld, okeyTile))
+        if (DetectPairs(hand, okeyTile, out List<Meld> detectedPairs))
         {
-            Tile normalTile = meld.Find(t => !IsOkeyTile(t, okeyTile));
-            int val = (normalTile != null) ? normalTile.GetEffectiveValue(okeyTile) : (okeyTile != null ? okeyTile.TileValue : 1);
-            return val * meld.Count;
-        }
-
-        if (CheckSequencePer(meld, okeyTile))
-        {
-            List<Tile> sorted = new List<Tile>(meld);
-            sorted.Sort((a, b) => a.GetEffectiveValue(okeyTile).CompareTo(b.GetEffectiveValue(okeyTile)));
-
-            Tile normalTile = sorted.Find(t => !IsOkeyTile(t, okeyTile));
-            int baseVal = (normalTile != null) ? normalTile.GetEffectiveValue(okeyTile) : 1;
-
-            int sum = 0;
-            for (int i = 0; i < meld.Count; i++)
+            if (detectedPairs.Count >= MinPairsToOpen)
             {
-                sum += (baseVal + i);
+                pairsToOpen = detectedPairs;
+                return true;
             }
-            return sum;
+            error = $"Yeterli çift yok! En az {MinPairsToOpen} çift gerekli (Elinizdeki çift sayısı: {detectedPairs.Count}).";
+            return false;
         }
 
-        return 0;
+        error = "Hiç çift bulunamadı!";
+        return false;
     }
 
-    public static int CalculateTotalPoints(List<List<Tile>> allMelds, Tile okeyTile)
+    public static bool DetectPairs(List<Tile> hand, Tile okeyTile, out List<Meld> pairs)
     {
-        int total = 0;
-        if (allMelds == null) return 0;
+        pairs = new List<Meld>();
+        if (hand == null || hand.Count < 2) return false;
 
-        foreach (var meld in allMelds)
+        List<Tile> pool = new List<Tile>(hand);
+        List<Tile> okeyPool = new List<Tile>();
+
+        for (int i = pool.Count - 1; i >= 0; i--)
         {
-            total += CalculateMeldPoints(meld, okeyTile);
+            if (IsOkeyTile(pool[i], okeyTile))
+            {
+                okeyPool.Add(pool[i]);
+                pool.RemoveAt(i);
+            }
         }
 
-        return total;
+        for (int i = 0; i < pool.Count; i++)
+        {
+            if (pool[i] == null) continue;
+
+            for (int j = i + 1; j < pool.Count; j++)
+            {
+                if (pool[j] == null) continue;
+
+                if (pool[i].GetEffectiveColor(okeyTile) == pool[j].GetEffectiveColor(okeyTile) &&
+                    pool[i].GetEffectiveValue(okeyTile) == pool[j].GetEffectiveValue(okeyTile))
+                {
+                    pairs.Add(new Meld(new List<Tile> { pool[i], pool[j] }, MeldType.Pair, pool[i].GetEffectiveValue(okeyTile) * 2));
+                    pool[i] = null;
+                    pool[j] = null;
+                    break;
+                }
+            }
+        }
+
+        // Kalan tekil taşlar için Okey jokerlerini çift olarak bağla
+        for (int i = 0; i < pool.Count && okeyPool.Count > 0; i++)
+        {
+            if (pool[i] != null)
+            {
+                Tile okeyT = okeyPool[0];
+                okeyPool.RemoveAt(0);
+                pairs.Add(new Meld(new List<Tile> { pool[i], okeyT }, MeldType.Pair, pool[i].GetEffectiveValue(okeyTile) * 2));
+                pool[i] = null;
+            }
+        }
+
+        return pairs.Count > 0;
     }
 
-    public static bool CanProcessTileToMeld(Tile tile, Meld targetMeld, Tile okeyTile, bool playerOpenedPairs, out bool addToStart)
+    public static bool CanProcessTileToMeld(Tile candidateTile, Meld targetMeld, Tile okeyTile, bool playerHasOpenedPairs, out bool addToStart)
     {
         addToStart = false;
-        if (tile == null || targetMeld == null || targetMeld.Tiles == null || targetMeld.Tiles.Count == 0)
+        if (candidateTile == null || targetMeld == null || targetMeld.Tiles == null || targetMeld.Tiles.Count == 0)
             return false;
 
-        if (playerOpenedPairs || targetMeld.Type == MeldType.Pair)
+        if (targetMeld.Type == MeldType.Pair)
+        {
             return false;
+        }
 
-        int tileVal = tile.GetEffectiveValue(okeyTile);
-        TileColor tileCol = tile.GetEffectiveColor(okeyTile);
-
-        // 1. GRUP PERİNE İŞLEME
-        if (targetMeld.Type == MeldType.Group || CheckGroupPer(targetMeld.Tiles, okeyTile))
+        if (targetMeld.Type == MeldType.Group)
         {
             if (targetMeld.Tiles.Count >= 4) return false;
 
             Tile sampleTile = targetMeld.Tiles.Find(t => !IsOkeyTile(t, okeyTile));
-            int expectedVal = sampleTile != null ? sampleTile.GetEffectiveValue(okeyTile) : okeyTile.TileValue;
+            int groupValue = (sampleTile != null) ? sampleTile.GetEffectiveValue(okeyTile) : (okeyTile != null ? okeyTile.TileValue : 1);
 
-            if (tileVal != expectedVal) return false;
-
-            foreach (Tile t in targetMeld.Tiles)
+            if (IsOkeyTile(candidateTile, okeyTile) || candidateTile.GetEffectiveValue(okeyTile) == groupValue)
             {
-                if (!IsOkeyTile(t, okeyTile) && t.GetEffectiveColor(okeyTile) == tileCol)
+                TileColor candidateColor = candidateTile.GetEffectiveColor(okeyTile);
+                foreach (var t in targetMeld.Tiles)
                 {
-                    return false;
+                    if (!IsOkeyTile(t, okeyTile) && t.GetEffectiveColor(okeyTile) == candidateColor)
+                        return false;
                 }
+                addToStart = false;
+                return true;
             }
-
-            return true;
+            return false;
         }
 
-        // 2. SERİ PERİNE İŞLEME
-        if (targetMeld.Type == MeldType.Sequence || CheckSequencePer(targetMeld.Tiles, okeyTile))
+        if (targetMeld.Type == MeldType.Sequence)
         {
-            List<Tile> tiles = targetMeld.Tiles;
-            Tile sampleTile = tiles.Find(t => !IsOkeyTile(t, okeyTile));
-            TileColor expectedCol = sampleTile != null ? sampleTile.GetEffectiveColor(okeyTile) : okeyTile.Color;
+            List<Tile> currentTiles = targetMeld.Tiles;
+            Tile firstTile = currentTiles[0];
+            Tile lastTile = currentTiles[currentTiles.Count - 1];
 
-            if (tileCol != expectedCol && !IsOkeyTile(tile, okeyTile)) return false;
+            Tile sampleTile = currentTiles.Find(t => !IsOkeyTile(t, okeyTile));
+            if (sampleTile == null) return false;
 
-            int firstVal = tiles[0].GetEffectiveValue(okeyTile);
-            int lastVal = tiles[tiles.Count - 1].GetEffectiveValue(okeyTile);
+            TileColor seqColor = sampleTile.GetEffectiveColor(okeyTile);
+            if (!IsOkeyTile(candidateTile, okeyTile) && candidateTile.GetEffectiveColor(okeyTile) != seqColor)
+                return false;
 
-            if (tileVal == firstVal - 1 && firstVal > 1)
+            int firstVal = firstTile.GetEffectiveValue(okeyTile);
+            int lastVal = lastTile.GetEffectiveValue(okeyTile);
+            int candVal = candidateTile.GetEffectiveValue(okeyTile);
+
+            if (candVal == firstVal - 1 && firstVal > 1)
             {
                 addToStart = true;
                 return true;
             }
 
-            if (tileVal == lastVal + 1 && lastVal < 13)
+            if (candVal == lastVal + 1 && lastVal < 13)
             {
                 addToStart = false;
                 return true;
@@ -291,55 +323,48 @@ public static class OkeyRuleEngine
         return false;
     }
 
-    public static bool CanProcessTileToAnyMeld(Tile tile, List<Meld> tableMelds, Tile okeyTile, bool playerOpenedPairs)
+    public static bool CanDrawFromDiscard(
+        Player player,
+        Tile candidateTile,
+        Tile okeyTile,
+        List<Meld> tableMelds,
+        out string reason)
     {
-        if (tile == null || tableMelds == null) return false;
-
-        foreach (var meld in tableMelds)
-        {
-            if (CanProcessTileToMeld(tile, meld, okeyTile, playerOpenedPairs, out _))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public static bool CanDrawFromDiscard(Player player, Tile candidateTile, Tile okeyTile, List<Meld> tableMelds, out string reason)
-    {
-        reason = string.Empty;
+        reason = "";
         if (player == null || candidateTile == null)
         {
-            reason = "Geçersiz taş veya oyuncu!";
+            reason = "Geçersiz işlem.";
             return false;
         }
 
-        // 1. Durum: Daha önce el açmış oyuncu masaya işleyebiliyorsa alabilir
         if (player.HasOpenedHand)
         {
-            if (CanProcessTileToAnyMeld(candidateTile, tableMelds, okeyTile, player.HasOpenedPairs))
+            if (tableMelds != null)
             {
-                return true;
+                foreach (var meld in tableMelds)
+                {
+                    if (CanProcessTileToMeld(candidateTile, meld, okeyTile, player.HasOpenedPairs, out _))
+                    {
+                        return true;
+                    }
+                }
             }
 
-            reason = "Bu taş masada açılmış hiçbir pere işlenemediği için yandan taş alamazsınız!";
+            reason = "Bu taş masadaki hiçbir pere İŞLENEMEDİĞİ için el açmış olsanız dahi yandan taş ALAMAZSINIZ!";
             return false;
         }
 
-        // 2. Durum: Henüz el açmamış oyuncu için simülasyon
         List<Tile> tempHand = new List<Tile>(player.Hand) { candidateTile };
 
-        // 2a. Çift kontrolü
-        if (DetectPairs(tempHand, okeyTile, out List<Meld> pairs))
+        if (DetectPairs(tempHand, okeyTile, out List<Meld> pairs) && pairs.Count >= MinPairsToOpen)
         {
-            bool tileUsedInPairs = pairs.Exists(p => p.Tiles.Contains(candidateTile));
-            if (tileUsedInPairs && pairs.Count >= MinPairsToOpen)
+            bool candidateInPairs = pairs.Exists(p => p.Tiles.Contains(candidateTile));
+            if (candidateInPairs)
             {
                 return true;
             }
         }
 
-        // 2b. 101 Seri/Grup per kontrolü
         FindOptimalMelds(tempHand, okeyTile, out int totalPoints, out List<List<Tile>> bestMelds);
         bool candidateUsed = bestMelds.Exists(m => m.Contains(candidateTile));
 
@@ -352,9 +377,6 @@ public static class OkeyRuleEngine
         return false;
     }
 
-    /// <summary>
-    /// Verilen taş havuzundan çakışmayan en yüksek puanlı tüm geçerli perleri (Seri & Grup) tam kapsamlı bulur.
-    /// </summary>
     public static void FindOptimalMelds(List<Tile> hand, Tile okeyTile, out int totalPoints, out List<List<Tile>> bestMelds)
     {
         totalPoints = 0;
@@ -363,7 +385,6 @@ public static class OkeyRuleEngine
 
         List<List<Tile>> allCandidateMelds = GenerateAllPossibleMelds(hand, okeyTile);
 
-        // En yüksek puanı veren çakışmayan kombinasyonu bul
         List<List<Tile>> currentCombo = new List<List<Tile>>();
         HashSet<Tile> usedTiles = new HashSet<Tile>();
 
@@ -396,7 +417,6 @@ public static class OkeyRuleEngine
         {
             List<Tile> meld = candidateMelds[i];
 
-            // Çakışma var mı kontrol et
             bool overlaps = false;
             foreach (var t in meld)
             {
@@ -424,33 +444,34 @@ public static class OkeyRuleEngine
     {
         List<List<Tile>> candidateMelds = new List<List<Tile>>();
 
-        // 1. Grupları bul (Aynı sayı, farklı renkler: 3'lü veya 4'lü)
-        Dictionary<int, List<Tile>> byVal = new Dictionary<int, List<Tile>>();
+        List<Tile> normalTiles = new List<Tile>();
+        List<Tile> okeyTiles = new List<Tile>();
+
         foreach (var t in hand)
         {
-            int v = t.GetEffectiveValue(okeyTile);
-            if (!byVal.ContainsKey(v)) byVal[v] = new List<Tile>();
-            byVal[v].Add(t);
+            if (IsOkeyTile(t, okeyTile)) okeyTiles.Add(t);
+            else normalTiles.Add(t);
         }
 
-        foreach (var kvp in byVal)
+        // 1. Grupları bul (Aynı sayı, farklı renkler: 3'lü veya 4'lü + Joker desteği)
+        Dictionary<int, Dictionary<TileColor, List<Tile>>> byValAndColor = new Dictionary<int, Dictionary<TileColor, List<Tile>>>();
+        foreach (var t in normalTiles)
         {
-            List<Tile> sameValList = kvp.Value;
+            int v = t.GetEffectiveValue(okeyTile);
+            TileColor c = t.GetEffectiveColor(okeyTile);
+            if (!byValAndColor.ContainsKey(v)) byValAndColor[v] = new Dictionary<TileColor, List<Tile>>();
+            if (!byValAndColor[v].ContainsKey(c)) byValAndColor[v][c] = new List<Tile>();
+            byValAndColor[v][c].Add(t);
+        }
 
-            // Renklere göre tekilleştirilmiş kombinasyonları bul
-            Dictionary<TileColor, List<Tile>> colMap = new Dictionary<TileColor, List<Tile>>();
-            foreach (var t in sameValList)
+        foreach (var kvp in byValAndColor)
+        {
+            var colMap = kvp.Value;
+            List<TileColor> cols = new List<TileColor>(colMap.Keys);
+
+            // Normal 3'lü gruplar (Jokersiz)
+            if (cols.Count >= 3)
             {
-                TileColor c = t.GetEffectiveColor(okeyTile);
-                if (!colMap.ContainsKey(c)) colMap[c] = new List<Tile>();
-                colMap[c].Add(t);
-            }
-
-            if (colMap.Count >= 3)
-            {
-                List<TileColor> cols = new List<TileColor>(colMap.Keys);
-
-                // 3'lü kombinasyonlar
                 for (int i = 0; i < cols.Count; i++)
                 {
                     for (int j = i + 1; j < cols.Count; j++)
@@ -470,20 +491,166 @@ public static class OkeyRuleEngine
                         }
                     }
                 }
+            }
 
-                // 4'lü kombinasyon
-                if (colMap.Count == 4)
+            // Normal 4'lü grup (Jokersiz)
+            if (cols.Count == 4)
+            {
+                foreach (var t1 in colMap[cols[0]])
                 {
-                    foreach (var t1 in colMap[cols[0]])
+                    foreach (var t2 in colMap[cols[1]])
                     {
-                        foreach (var t2 in colMap[cols[1]])
+                        foreach (var t3 in colMap[cols[2]])
                         {
-                            foreach (var t3 in colMap[cols[2]])
+                            foreach (var t4 in colMap[cols[3]])
                             {
-                                foreach (var t4 in colMap[cols[3]])
+                                candidateMelds.Add(new List<Tile> { t1, t2, t3, t4 });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Jokerli 3'lü gruplar (2 Renk + 1 Okey)
+            if (cols.Count >= 2 && okeyTiles.Count >= 1)
+            {
+                Tile okey1 = okeyTiles[0];
+                for (int i = 0; i < cols.Count; i++)
+                {
+                    for (int j = i + 1; j < cols.Count; j++)
+                    {
+                        foreach (var t1 in colMap[cols[i]])
+                        {
+                            foreach (var t2 in colMap[cols[j]])
+                            {
+                                candidateMelds.Add(new List<Tile> { t1, t2, okey1 });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Jokerli 4'lü gruplar (3 Renk + 1 Okey)
+            if (cols.Count >= 3 && okeyTiles.Count >= 1)
+            {
+                Tile okey1 = okeyTiles[0];
+                for (int i = 0; i < cols.Count; i++)
+                {
+                    for (int j = i + 1; j < cols.Count; j++)
+                    {
+                        for (int k = j + 1; k < cols.Count; k++)
+                        {
+                            foreach (var t1 in colMap[cols[i]])
+                            {
+                                foreach (var t2 in colMap[cols[j]])
                                 {
-                                    candidateMelds.Add(new List<Tile> { t1, t2, t3, t4 });
+                                    foreach (var t3 in colMap[cols[k]])
+                                    {
+                                        candidateMelds.Add(new List<Tile> { t1, t2, t3, okey1 });
+                                    }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Çift Jokerli 3'lü gruplar (1 Renk + 2 Okey)
+            if (cols.Count >= 1 && okeyTiles.Count >= 2)
+            {
+                Tile o1 = okeyTiles[0];
+                Tile o2 = okeyTiles[1];
+                foreach (var col in cols)
+                {
+                    foreach (var t1 in colMap[col])
+                    {
+                        candidateMelds.Add(new List<Tile> { t1, o1, o2 });
+                    }
+                }
+            }
+        }
+
+        // 2. Serileri bul (Aynı renk, ardışık sayılar + Joker desteği)
+        for (int c = 0; c < 4; c++)
+        {
+            TileColor color = (TileColor)c;
+            Dictionary<int, List<Tile>> valMap = new Dictionary<int, List<Tile>>();
+
+            foreach (var t in normalTiles)
+            {
+                if (t.GetEffectiveColor(okeyTile) == color)
+                {
+                    int v = t.GetEffectiveValue(okeyTile);
+                    if (!valMap.ContainsKey(v)) valMap[v] = new List<Tile>();
+                    valMap[v].Add(t);
+                }
+            }
+
+            if (valMap.Count == 0 && okeyTiles.Count < 3) continue;
+
+            // Olası seri uzunlukları 3..7
+            for (int len = 3; len <= 7; len++)
+            {
+                for (int startV = 1; startV <= (14 - len); startV++)
+                {
+                    List<int> existingVals = new List<int>();
+                    int missingCount = 0;
+
+                    for (int step = 0; step < len; step++)
+                    {
+                        int targetVal = startV + step;
+                        if (valMap.ContainsKey(targetVal) && valMap[targetVal].Count > 0)
+                        {
+                            existingVals.Add(targetVal);
+                        }
+                        else
+                        {
+                            missingCount++;
+                        }
+                    }
+
+                    if (missingCount <= okeyTiles.Count && existingVals.Count >= 1)
+                    {
+                        // Kombinasyonları üret
+                        List<List<Tile>> combos = new List<List<Tile>> { new List<Tile>() };
+
+                        for (int step = 0; step < len; step++)
+                        {
+                            int targetVal = startV + step;
+                            List<List<Tile>> newCombos = new List<List<Tile>>();
+
+                            if (valMap.ContainsKey(targetVal) && valMap[targetVal].Count > 0)
+                            {
+                                foreach (var combo in combos)
+                                {
+                                    foreach (var opt in valMap[targetVal])
+                                    {
+                                        var extended = new List<Tile>(combo) { opt };
+                                        newCombos.Add(extended);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // Joker ekle
+                                foreach (var combo in combos)
+                                {
+                                    int usedOkeys = combo.FindAll(t => IsOkeyTile(t, okeyTile)).Count;
+                                    if (usedOkeys < okeyTiles.Count)
+                                    {
+                                        var extended = new List<Tile>(combo) { okeyTiles[usedOkeys] };
+                                        newCombos.Add(extended);
+                                    }
+                                }
+                            }
+                            combos = newCombos;
+                        }
+
+                        foreach (var completedSeq in combos)
+                        {
+                            if (completedSeq.Count == len)
+                            {
+                                candidateMelds.Add(completedSeq);
                             }
                         }
                     }
@@ -491,81 +658,6 @@ public static class OkeyRuleEngine
             }
         }
 
-        // 2. Serileri bul (Aynı renk, ardışık sayılar)
-        Dictionary<TileColor, List<Tile>> byColor = new Dictionary<TileColor, List<Tile>>();
-        foreach (var t in hand)
-        {
-            TileColor c = t.GetEffectiveColor(okeyTile);
-            if (!byColor.ContainsKey(c)) byColor[c] = new List<Tile>();
-            byColor[c].Add(t);
-        }
-
-        foreach (var kvp in byColor)
-        {
-            List<Tile> colorTiles = kvp.Value;
-            Dictionary<int, List<Tile>> valMap = new Dictionary<int, List<Tile>>();
-            foreach (var t in colorTiles)
-            {
-                int v = t.GetEffectiveValue(okeyTile);
-                if (!valMap.ContainsKey(v)) valMap[v] = new List<Tile>();
-                valMap[v].Add(t);
-            }
-
-            List<int> sortedVals = new List<int>(valMap.Keys);
-            sortedVals.Sort();
-
-            for (int i = 0; i < sortedVals.Count; i++)
-            {
-                List<int> currentRun = new List<int> { sortedVals[i] };
-                for (int j = i + 1; j < sortedVals.Count; j++)
-                {
-                    if (sortedVals[j] == currentRun[currentRun.Count - 1] + 1)
-                    {
-                        currentRun.Add(sortedVals[j]);
-                        if (currentRun.Count >= 3)
-                        {
-                            // Bu run için taş kombinasyonlarını ekle
-                            AddSequenceCombinations(valMap, currentRun, candidateMelds);
-                        }
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-            }
-        }
-
         return candidateMelds;
-    }
-
-    private static void AddSequenceCombinations(Dictionary<int, List<Tile>> valMap, List<int> runValues, List<List<Tile>> candidateMelds)
-    {
-        // runValues: örn [5, 6, 7]
-        List<List<Tile>> combos = new List<List<Tile>> { new List<Tile>() };
-
-        foreach (int v in runValues)
-        {
-            List<Tile> options = valMap[v];
-            List<List<Tile>> newCombos = new List<List<Tile>>();
-
-            foreach (var c in combos)
-            {
-                foreach (var opt in options)
-                {
-                    List<Tile> extended = new List<Tile>(c) { opt };
-                    newCombos.Add(extended);
-                }
-            }
-            combos = newCombos;
-        }
-
-        foreach (var c in combos)
-        {
-            if (c.Count >= 3)
-            {
-                candidateMelds.Add(c);
-            }
-        }
     }
 }
