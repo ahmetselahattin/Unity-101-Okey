@@ -49,7 +49,6 @@ public class GameManager : MonoBehaviourPunCallbacks
         {
             if (isOnlineGame && PhotonNetwork.LocalPlayer != null)
             {
-                // 0-3 arası koltuk indeksi
                 int actor = PhotonNetwork.LocalPlayer.ActorNumber - 1;
                 return Mathf.Clamp(actor, 0, 3);
             }
@@ -183,7 +182,6 @@ public class GameManager : MonoBehaviourPunCallbacks
             g.TileValue, (int)g.Color, g.IsFakeOkey,
             o.TileValue, (int)o.Color);
 
-        // Her koltuğa taşlarını gönder
         for (int i = 0; i < 4; i++)
         {
             int count = (i == 0) ? 22 : 21;
@@ -233,40 +231,20 @@ public class GameManager : MonoBehaviourPunCallbacks
             return;
         }
 
-        if (isOnlineGame)
+        if (deckManager != null && deckManager.RemainingCount > 0)
         {
-            // MasterClient'tan veya desteden taş iste
-            if (deckManager != null && deckManager.RemainingCount > 0)
+            Tile drawnTile = deckManager.DrawTile();
+            players[localSeatIndex].AddTile(drawnTile);
+            hasDrawnTileThisTurn = true;
+
+            if (uiManager != null)
             {
-                Tile drawnTile = deckManager.DrawTile();
-                players[localSeatIndex].AddTile(drawnTile);
-                hasDrawnTileThisTurn = true;
-
-                if (uiManager != null)
-                {
-                    uiManager.AddSingleTileToHand(drawnTile);
-                    uiManager.SetDeckButtonState(false);
-                    uiManager.SetLeftDiscardButtonState(false);
-                }
+                uiManager.AddSingleTileToHand(drawnTile);
+                uiManager.SetDeckButtonState(false);
+                uiManager.SetLeftDiscardButtonState(false);
             }
-        }
-        else
-        {
-            if (deckManager != null && deckManager.RemainingCount > 0)
-            {
-                Tile drawnTile = deckManager.DrawTile();
-                players[0].AddTile(drawnTile);
-                hasDrawnTileThisTurn = true;
 
-                if (uiManager != null)
-                {
-                    uiManager.AddSingleTileToHand(drawnTile);
-                    uiManager.SetDeckButtonState(false);
-                    uiManager.SetLeftDiscardButtonState(false);
-                }
-
-                Debug.Log($"[GameManager] Desteden taş çekildi: {drawnTile}");
-            }
+            Debug.Log($"[GameManager] Desteden taş çekildi: {drawnTile}");
         }
     }
 
@@ -327,14 +305,41 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         if (isGameOver || uiManager == null || deckManager == null) return;
 
+        // 1. Önce oyuncunun ıstakada boşluk bırakarak dizdiği özel perleri kontrol et
         List<List<Tile>> rawMelds = uiManager.GetMeldsFromIstaka();
+        bool manualValid = OkeyRuleEngine.ValidateOpenHand(rawMelds, deckManager.OkeyTile, out int totalPoints, out string manualError);
 
-        if (OkeyRuleEngine.ValidateOpenHand(rawMelds, deckManager.OkeyTile, out int totalPoints, out string error))
+        List<List<Tile>> meldsToOpen = null;
+        int finalPoints = 0;
+
+        if (manualValid && totalPoints >= OkeyRuleEngine.OpenHandThreshold)
         {
-            Debug.Log($"[GameManager] Tebrikler! 101 barajı aşıldı ({totalPoints} Puan), el masaya açılıyor.");
+            meldsToOpen = rawMelds;
+            finalPoints = totalPoints;
+        }
+        else
+        {
+            // 2. Eğer ıstakada boşluk bırakılmamışsa eldeki tüm taşlardan en iyi perleri otomatik bul
+            OkeyRuleEngine.FindOptimalMelds(players[localSeatIndex].Hand, deckManager.OkeyTile, out int autoPoints, out List<List<Tile>> autoMelds);
+
+            if (autoPoints >= OkeyRuleEngine.OpenHandThreshold && autoMelds.Count > 0)
+            {
+                meldsToOpen = autoMelds;
+                finalPoints = autoPoints;
+            }
+            else
+            {
+                Debug.LogWarning($"[GameManager] El açma başarısız: 101 barajı aşılamadı! (Eldeki en yüksek per puanı: {autoPoints} / Gerekli: 101)");
+                return;
+            }
+        }
+
+        if (meldsToOpen != null && meldsToOpen.Count > 0)
+        {
+            Debug.Log($"[GameManager] Tebrikler! 101 barajı aşıldı ({finalPoints} Puan), el masaya açılıyor.");
 
             List<Meld> newOpenedMelds = new List<Meld>();
-            foreach (var tileGroup in rawMelds)
+            foreach (var tileGroup in meldsToOpen)
             {
                 MeldType type = OkeyRuleEngine.CheckGroupPer(tileGroup, deckManager.OkeyTile) ? MeldType.Group : MeldType.Sequence;
                 int points = OkeyRuleEngine.CalculateMeldPoints(tileGroup, deckManager.OkeyTile);
@@ -360,10 +365,6 @@ public class GameManager : MonoBehaviourPunCallbacks
             {
                 photonView.RPC(nameof(RPC_OnPlayerOpenedMelds), RpcTarget.Others, localSeatIndex, Meld.SerializeMelds(newOpenedMelds), false);
             }
-        }
-        else
-        {
-            Debug.LogWarning($"[GameManager] El açma başarısız: {error}");
         }
     }
 

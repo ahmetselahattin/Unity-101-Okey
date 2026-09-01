@@ -66,7 +66,7 @@ public static class OkeyRuleEngine
             if (i > 0)
             {
                 int diff = normalTiles[i].GetEffectiveValue(okeyTile) - normalTiles[i - 1].GetEffectiveValue(okeyTile);
-                if (diff == 0) return false;
+                if (diff <= 0) return false; // Aynı taştan 2 tane olamaz
                 requiredOkeys += (diff - 1);
             }
         }
@@ -314,6 +314,7 @@ public static class OkeyRuleEngine
             return false;
         }
 
+        // 1. Durum: Daha önce el açmış oyuncu masaya işleyebiliyorsa alabilir
         if (player.HasOpenedHand)
         {
             if (CanProcessTileToAnyMeld(candidateTile, tableMelds, okeyTile, player.HasOpenedPairs))
@@ -325,8 +326,10 @@ public static class OkeyRuleEngine
             return false;
         }
 
+        // 2. Durum: Henüz el açmamış oyuncu için simülasyon
         List<Tile> tempHand = new List<Tile>(player.Hand) { candidateTile };
 
+        // 2a. Çift kontrolü
         if (DetectPairs(tempHand, okeyTile, out List<Meld> pairs))
         {
             bool tileUsedInPairs = pairs.Exists(p => p.Tiles.Contains(candidateTile));
@@ -336,6 +339,7 @@ public static class OkeyRuleEngine
             }
         }
 
+        // 2b. 101 Seri/Grup per kontrolü
         FindOptimalMelds(tempHand, okeyTile, out int totalPoints, out List<List<Tile>> bestMelds);
         bool candidateUsed = bestMelds.Exists(m => m.Contains(candidateTile));
 
@@ -344,12 +348,12 @@ public static class OkeyRuleEngine
             return true;
         }
 
-        reason = "Bu taş ile 101 barajını aşamadığınız veya 5 çift oluşturamadığınız için yandan taş ALAMAZSINIZ! Desteden çekmelisiniz.";
+        reason = $"Bu taş ile 101 barajını aşamadığınız veya 5 çift oluşturamadığınız için yandan taş ALAMAZSINIZ! (Mevcut Maksimum Puan: {totalPoints} / Gerekli: 101)";
         return false;
     }
 
     /// <summary>
-    /// Verilen taş listesinden çakışmayan en yüksek puanlı geçerli perleri (Seri & Grup) akıllıca bulur.
+    /// Verilen taş havuzundan çakışmayan en yüksek puanlı tüm geçerli perleri (Seri & Grup) tam kapsamlı bulur.
     /// </summary>
     public static void FindOptimalMelds(List<Tile> hand, Tile okeyTile, out int totalPoints, out List<List<Tile>> bestMelds)
     {
@@ -357,87 +361,211 @@ public static class OkeyRuleEngine
         bestMelds = new List<List<Tile>>();
         if (hand == null || hand.Count < 3) return;
 
-        List<Tile> remaining = new List<Tile>(hand);
+        List<List<Tile>> allCandidateMelds = GenerateAllPossibleMelds(hand, okeyTile);
 
-        // 1. Önce Serileri Bul (Örn: Kırmızı 7-8-9, Mavi 3-4-5)
-        Dictionary<TileColor, List<Tile>> byColor = new Dictionary<TileColor, List<Tile>>();
-        foreach (var t in remaining)
+        // En yüksek puanı veren çakışmayan kombinasyonu bul
+        List<List<Tile>> currentCombo = new List<List<Tile>>();
+        HashSet<Tile> usedTiles = new HashSet<Tile>();
+
+        int maxScore = 0;
+        List<List<Tile>> maxMelds = new List<List<Tile>>();
+
+        FindBestCombinationRecursive(allCandidateMelds, 0, currentCombo, usedTiles, okeyTile, ref maxScore, ref maxMelds);
+
+        totalPoints = maxScore;
+        bestMelds = maxMelds;
+    }
+
+    private static void FindBestCombinationRecursive(
+        List<List<Tile>> candidateMelds,
+        int startIndex,
+        List<List<Tile>> currentCombo,
+        HashSet<Tile> usedTiles,
+        Tile okeyTile,
+        ref int maxScore,
+        ref List<List<Tile>> maxMelds)
+    {
+        int currentScore = CalculateTotalPoints(currentCombo, okeyTile);
+        if (currentScore > maxScore)
         {
-            TileColor col = t.GetEffectiveColor(okeyTile);
-            if (!byColor.ContainsKey(col)) byColor[col] = new List<Tile>();
-            byColor[col].Add(t);
+            maxScore = currentScore;
+            maxMelds = new List<List<Tile>>(currentCombo);
+        }
+
+        for (int i = startIndex; i < candidateMelds.Count; i++)
+        {
+            List<Tile> meld = candidateMelds[i];
+
+            // Çakışma var mı kontrol et
+            bool overlaps = false;
+            foreach (var t in meld)
+            {
+                if (usedTiles.Contains(t))
+                {
+                    overlaps = true;
+                    break;
+                }
+            }
+
+            if (!overlaps)
+            {
+                foreach (var t in meld) usedTiles.Add(t);
+                currentCombo.Add(meld);
+
+                FindBestCombinationRecursive(candidateMelds, i + 1, currentCombo, usedTiles, okeyTile, ref maxScore, ref maxMelds);
+
+                currentCombo.RemoveAt(currentCombo.Count - 1);
+                foreach (var t in meld) usedTiles.Remove(t);
+            }
+        }
+    }
+
+    private static List<List<Tile>> GenerateAllPossibleMelds(List<Tile> hand, Tile okeyTile)
+    {
+        List<List<Tile>> candidateMelds = new List<List<Tile>>();
+
+        // 1. Grupları bul (Aynı sayı, farklı renkler: 3'lü veya 4'lü)
+        Dictionary<int, List<Tile>> byVal = new Dictionary<int, List<Tile>>();
+        foreach (var t in hand)
+        {
+            int v = t.GetEffectiveValue(okeyTile);
+            if (!byVal.ContainsKey(v)) byVal[v] = new List<Tile>();
+            byVal[v].Add(t);
+        }
+
+        foreach (var kvp in byVal)
+        {
+            List<Tile> sameValList = kvp.Value;
+
+            // Renklere göre tekilleştirilmiş kombinasyonları bul
+            Dictionary<TileColor, List<Tile>> colMap = new Dictionary<TileColor, List<Tile>>();
+            foreach (var t in sameValList)
+            {
+                TileColor c = t.GetEffectiveColor(okeyTile);
+                if (!colMap.ContainsKey(c)) colMap[c] = new List<Tile>();
+                colMap[c].Add(t);
+            }
+
+            if (colMap.Count >= 3)
+            {
+                List<TileColor> cols = new List<TileColor>(colMap.Keys);
+
+                // 3'lü kombinasyonlar
+                for (int i = 0; i < cols.Count; i++)
+                {
+                    for (int j = i + 1; j < cols.Count; j++)
+                    {
+                        for (int k = j + 1; k < cols.Count; k++)
+                        {
+                            foreach (var t1 in colMap[cols[i]])
+                            {
+                                foreach (var t2 in colMap[cols[j]])
+                                {
+                                    foreach (var t3 in colMap[cols[k]])
+                                    {
+                                        candidateMelds.Add(new List<Tile> { t1, t2, t3 });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4'lü kombinasyon
+                if (colMap.Count == 4)
+                {
+                    foreach (var t1 in colMap[cols[0]])
+                    {
+                        foreach (var t2 in colMap[cols[1]])
+                        {
+                            foreach (var t3 in colMap[cols[2]])
+                            {
+                                foreach (var t4 in colMap[cols[3]])
+                                {
+                                    candidateMelds.Add(new List<Tile> { t1, t2, t3, t4 });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Serileri bul (Aynı renk, ardışık sayılar)
+        Dictionary<TileColor, List<Tile>> byColor = new Dictionary<TileColor, List<Tile>>();
+        foreach (var t in hand)
+        {
+            TileColor c = t.GetEffectiveColor(okeyTile);
+            if (!byColor.ContainsKey(c)) byColor[c] = new List<Tile>();
+            byColor[c].Add(t);
         }
 
         foreach (var kvp in byColor)
         {
-            List<Tile> colorList = kvp.Value;
-            colorList.Sort((a, b) => a.GetEffectiveValue(okeyTile).CompareTo(b.GetEffectiveValue(okeyTile)));
-
-            List<Tile> currentSeq = new List<Tile>();
-            for (int i = 0; i < colorList.Count; i++)
+            List<Tile> colorTiles = kvp.Value;
+            Dictionary<int, List<Tile>> valMap = new Dictionary<int, List<Tile>>();
+            foreach (var t in colorTiles)
             {
-                if (currentSeq.Count == 0)
+                int v = t.GetEffectiveValue(okeyTile);
+                if (!valMap.ContainsKey(v)) valMap[v] = new List<Tile>();
+                valMap[v].Add(t);
+            }
+
+            List<int> sortedVals = new List<int>(valMap.Keys);
+            sortedVals.Sort();
+
+            for (int i = 0; i < sortedVals.Count; i++)
+            {
+                List<int> currentRun = new List<int> { sortedVals[i] };
+                for (int j = i + 1; j < sortedVals.Count; j++)
                 {
-                    currentSeq.Add(colorList[i]);
-                }
-                else
-                {
-                    int diff = colorList[i].GetEffectiveValue(okeyTile) - currentSeq[currentSeq.Count - 1].GetEffectiveValue(okeyTile);
-                    if (diff == 1)
+                    if (sortedVals[j] == currentRun[currentRun.Count - 1] + 1)
                     {
-                        currentSeq.Add(colorList[i]);
-                    }
-                    else if (diff > 1)
-                    {
-                        if (currentSeq.Count >= 3)
+                        currentRun.Add(sortedVals[j]);
+                        if (currentRun.Count >= 3)
                         {
-                            bestMelds.Add(new List<Tile>(currentSeq));
-                            foreach (var t in currentSeq) remaining.Remove(t);
+                            // Bu run için taş kombinasyonlarını ekle
+                            AddSequenceCombinations(valMap, currentRun, candidateMelds);
                         }
-                        currentSeq.Clear();
-                        currentSeq.Add(colorList[i]);
                     }
-                }
-            }
-            if (currentSeq.Count >= 3)
-            {
-                bestMelds.Add(new List<Tile>(currentSeq));
-                foreach (var t in currentSeq) remaining.Remove(t);
-            }
-        }
-
-        // 2. Kalan Taşlardan Grupları Bul (Örn: 8-8-8 farklı renkler)
-        Dictionary<int, List<Tile>> byValue = new Dictionary<int, List<Tile>>();
-        foreach (var t in remaining)
-        {
-            int val = t.GetEffectiveValue(okeyTile);
-            if (!byValue.ContainsKey(val)) byValue[val] = new List<Tile>();
-            byValue[val].Add(t);
-        }
-
-        foreach (var kvp in byValue)
-        {
-            if (kvp.Value.Count >= 3)
-            {
-                HashSet<TileColor> seen = new HashSet<TileColor>();
-                List<Tile> group = new List<Tile>();
-                foreach (var t in kvp.Value)
-                {
-                    if (seen.Add(t.GetEffectiveColor(okeyTile)))
+                    else
                     {
-                        group.Add(t);
-                        if (group.Count == 4) break;
+                        break;
                     }
-                }
-
-                if (group.Count >= 3)
-                {
-                    bestMelds.Add(group);
-                    foreach (var t in group) remaining.Remove(t);
                 }
             }
         }
 
-        totalPoints = CalculateTotalPoints(bestMelds, okeyTile);
+        return candidateMelds;
+    }
+
+    private static void AddSequenceCombinations(Dictionary<int, List<Tile>> valMap, List<int> runValues, List<List<Tile>> candidateMelds)
+    {
+        // runValues: örn [5, 6, 7]
+        List<List<Tile>> combos = new List<List<Tile>> { new List<Tile>() };
+
+        foreach (int v in runValues)
+        {
+            List<Tile> options = valMap[v];
+            List<List<Tile>> newCombos = new List<List<Tile>>();
+
+            foreach (var c in combos)
+            {
+                foreach (var opt in options)
+                {
+                    List<Tile> extended = new List<Tile>(c) { opt };
+                    newCombos.Add(extended);
+                }
+            }
+            combos = newCombos;
+        }
+
+        foreach (var c in combos)
+        {
+            if (c.Count >= 3)
+            {
+                candidateMelds.Add(c);
+            }
+        }
     }
 }

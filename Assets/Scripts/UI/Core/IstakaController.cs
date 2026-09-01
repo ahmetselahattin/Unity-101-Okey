@@ -10,12 +10,12 @@ public class IstakaController : MonoBehaviour
 
     private readonly List<Transform> istakaSlots = new List<Transform>();
     public const int TotalSlotCount = 42;
+    public const int SlotsPerRow = 21;
 
     public void Initialize()
     {
         if (HandPanel == null) return;
 
-        // Eer nceden oluturulmu slotlar varsa temizle veya kaydet
         if (istakaSlots.Count == 0)
         {
             if (HandPanel.childCount == 0 && SlotPrefab != null)
@@ -50,6 +50,7 @@ public class IstakaController : MonoBehaviour
             TileDisplay display = tileObj.GetComponent<TileDisplay>();
             if (display != null)
             {
+                display.CanFlip = true;
                 display.SetTile(playerHand[i]);
             }
         }
@@ -59,7 +60,6 @@ public class IstakaController : MonoBehaviour
     {
         if (tileData == null || TilePrefab == null) return;
 
-        // lk bo yuvay bul
         Transform targetSlot = null;
         foreach (Transform slot in istakaSlots)
         {
@@ -75,6 +75,7 @@ public class IstakaController : MonoBehaviour
         TileDisplay display = tileObj.GetComponent<TileDisplay>();
         if (display != null)
         {
+            display.CanFlip = true;
             display.SetTile(tileData);
         }
     }
@@ -95,8 +96,9 @@ public class IstakaController : MonoBehaviour
         List<List<Tile>> detectedMelds = new List<List<Tile>>();
         List<Tile> currentGroup = new List<Tile>();
 
-        foreach (Transform slot in istakaSlots)
+        for (int i = 0; i < istakaSlots.Count; i++)
         {
+            Transform slot = istakaSlots[i];
             TileDisplay tileDisp = slot.GetComponentInChildren<TileDisplay>();
 
             if (tileDisp != null && tileDisp.tileData != null)
@@ -104,6 +106,16 @@ public class IstakaController : MonoBehaviour
                 currentGroup.Add(tileDisp.tileData);
             }
             else
+            {
+                if (currentGroup.Count >= 3)
+                {
+                    detectedMelds.Add(new List<Tile>(currentGroup));
+                }
+                currentGroup.Clear();
+            }
+
+            // Satır sonu kontrolü (Slot 20 üst satırın sonudur, alt satıra geçerken per bölünür)
+            if (i == SlotsPerRow - 1)
             {
                 if (currentGroup.Count >= 3)
                 {
