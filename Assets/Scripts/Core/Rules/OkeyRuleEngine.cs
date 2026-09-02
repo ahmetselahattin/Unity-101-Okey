@@ -153,7 +153,7 @@ public static class OkeyRuleEngine
         return total;
     }
 
-    public static bool ValidateOpenHand(List<List<Tile>> melds, Tile okeyTile, out int totalPoints, out string error)
+    public static bool ValidateOpenHand(List<List<Tile>> melds, Tile okeyTile, bool hasAlreadyOpened, out int totalPoints, out string error)
     {
         totalPoints = 0;
         error = "";
@@ -178,9 +178,10 @@ public static class OkeyRuleEngine
 
         totalPoints = CalculateTotalPoints(melds, okeyTile);
 
-        if (totalPoints < OpenHandThreshold)
+        // 101 Barajı YALNIZCA ilk el açmada zorunludur! Daha önce açmış oyuncu her peri açabilir.
+        if (!hasAlreadyOpened && totalPoints < OpenHandThreshold)
         {
-            error = $"Toplam puan {totalPoints}, baraj olan {OpenHandThreshold} puanı geçmedi!";
+            error = $"Toplam puan {totalPoints}, ilk açılış barajı olan {OpenHandThreshold} puanı geçmedi!";
             return false;
         }
 
@@ -350,7 +351,15 @@ public static class OkeyRuleEngine
                 }
             }
 
-            reason = "Bu taş masadaki hiçbir pere İŞLENEMEDİĞİ için el açmış olsanız dahi yandan taş ALAMAZSINIZ!";
+            // Ayrıca el açmış oyuncu yeni bir per oluşturabiliyorsa da çekebilir
+            List<Tile> checkHand = new List<Tile>(player.Hand) { candidateTile };
+            FindOptimalMelds(checkHand, okeyTile, out _, out List<List<Tile>> newMelds);
+            if (newMelds.Exists(m => m.Contains(candidateTile)))
+            {
+                return true;
+            }
+
+            reason = "Bu taş masadaki hiçbir pere İŞLENEMEDİĞİ ve yeni bir per OLUŞTURMADIĞI için yandan taş ALAMAZSINIZ!";
             return false;
         }
 
@@ -588,7 +597,6 @@ public static class OkeyRuleEngine
 
             if (valMap.Count == 0 && okeyTiles.Count < 3) continue;
 
-            // Olası seri uzunlukları 3..7
             for (int len = 3; len <= 7; len++)
             {
                 for (int startV = 1; startV <= (14 - len); startV++)
@@ -611,7 +619,6 @@ public static class OkeyRuleEngine
 
                     if (missingCount <= okeyTiles.Count && existingVals.Count >= 1)
                     {
-                        // Kombinasyonları üret
                         List<List<Tile>> combos = new List<List<Tile>> { new List<Tile>() };
 
                         for (int step = 0; step < len; step++)
@@ -632,7 +639,6 @@ public static class OkeyRuleEngine
                             }
                             else
                             {
-                                // Joker ekle
                                 foreach (var combo in combos)
                                 {
                                     int usedOkeys = combo.FindAll(t => IsOkeyTile(t, okeyTile)).Count;

@@ -365,24 +365,34 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         if (isGameOver || uiManager == null || deckManager == null) return;
 
-        List<List<Tile>> rawMelds = uiManager.GetMeldsFromIstaka(deckManager?.OkeyTile);
-        bool manualValid = OkeyRuleEngine.ValidateOpenHand(rawMelds, deckManager.OkeyTile, out int totalPoints, out string manualError);
+        Player localPlayer = players[localSeatIndex];
+        bool hasAlreadyOpened = localPlayer.HasOpenedHand;
 
-        if (!manualValid || totalPoints < OkeyRuleEngine.OpenHandThreshold)
+        List<List<Tile>> rawMelds = uiManager.GetMeldsFromIstaka(deckManager?.OkeyTile);
+        bool manualValid = OkeyRuleEngine.ValidateOpenHand(rawMelds, deckManager.OkeyTile, hasAlreadyOpened, out int totalPoints, out string manualError);
+
+        if (!manualValid)
         {
-            Debug.LogWarning($"[GameManager] El açma başarısız: {manualError} (Istakanızdaki perlerin puan toplamı: {totalPoints} / Gerekli: 101). Lütfen ıstakanızda perlerin arasına boşluk bırakarak doğru perler diziniz.");
+            if (!hasAlreadyOpened)
+            {
+                Debug.LogWarning($"[GameManager] İlk el açma başarısız: {manualError} (Istakanızdaki perlerin puan toplamı: {totalPoints} / Gerekli Baraj: 101). Lütfen ıstakanızda perlerin arasına boşluk bırakarak doğru perler diziniz.");
+            }
+            else
+            {
+                Debug.LogWarning($"[GameManager] Yeni per açma başarısız: {manualError}. Lütfen ıstakanızda geçerli 3'lü veya 4'lü perler diziniz.");
+            }
             return;
         }
 
         List<List<Tile>> meldsToOpen = rawMelds;
 
         // YANDAN TAŞ ALINDIĞINDA O TAŞI KULLANMA ŞARTI KONTROLÜ
-        if (players[localSeatIndex].HasDrawnFromDiscard && players[localSeatIndex].DrawnDiscardTile != null)
+        if (localPlayer.HasDrawnFromDiscard && localPlayer.DrawnDiscardTile != null)
         {
             bool usedDrawnTile = false;
             foreach (var m in meldsToOpen)
             {
-                if (m.Exists(t => t == players[localSeatIndex].DrawnDiscardTile || t.IsSame(players[localSeatIndex].DrawnDiscardTile)))
+                if (m.Exists(t => t == localPlayer.DrawnDiscardTile || t.IsSame(localPlayer.DrawnDiscardTile)))
                 {
                     usedDrawnTile = true;
                     break;
@@ -391,12 +401,19 @@ public class GameManager : MonoBehaviourPunCallbacks
 
             if (!usedDrawnTile)
             {
-                Debug.LogError($"[GameManager] KURAL İHLALİ: Soldan aldığınız {players[localSeatIndex].DrawnDiscardTile} taşını açtığınız perlerin içinde kullanmak zorundasınız! Bu taş olmadan el açamazsınız. (Açmayacaksanız sol taşa tıklayarak geri bırakınız).");
+                Debug.LogError($"[GameManager] KURAL İHLALİ: Soldan aldığınız {localPlayer.DrawnDiscardTile} taşını açtığınız perlerin içinde kullanmak zorundasınız! Bu taş olmadan el açamazsınız. (Açmayacaksanız sol taşa tıklayarak geri bırakınız).");
                 return;
             }
         }
 
-        Debug.Log($"[GameManager] Tebrikler! Istakanızda dizdiğiniz perler ile 101 barajı aşıldı ({totalPoints} Puan), el masaya açılıyor.");
+        if (hasAlreadyOpened)
+        {
+            Debug.Log($"[GameManager] Tebrikler! Elinizdeki yeni perler masaya eklendi ({totalPoints} Puan).");
+        }
+        else
+        {
+            Debug.Log($"[GameManager] Tebrikler! 101 barajı aşıldı ({totalPoints} Puan), eliniz masaya açıldı.");
+        }
 
         List<Meld> newOpenedMelds = new List<Meld>();
         foreach (var tileGroup in meldsToOpen)
@@ -406,20 +423,20 @@ public class GameManager : MonoBehaviourPunCallbacks
             Meld m = new Meld(tileGroup, type, points);
             newOpenedMelds.Add(m);
             tableMelds.Add(m);
-            players[localSeatIndex].OpenedMelds.Add(m);
+            localPlayer.OpenedMelds.Add(m);
 
             foreach (var tile in tileGroup)
             {
-                players[localSeatIndex].RemoveTile(tile);
+                localPlayer.RemoveTile(tile);
             }
         }
 
-        players[localSeatIndex].HasOpenedHand = true;
-        players[localSeatIndex].HasOpenedPairs = false;
-        players[localSeatIndex].HasDrawnFromDiscard = false;
-        players[localSeatIndex].DrawnDiscardTile = null;
+        localPlayer.HasOpenedHand = true;
+        localPlayer.HasOpenedPairs = false;
+        localPlayer.HasDrawnFromDiscard = false;
+        localPlayer.DrawnDiscardTile = null;
 
-        uiManager.RefreshHand(players[localSeatIndex].Hand);
+        uiManager.RefreshHand(localPlayer.Hand);
         uiManager.DrawOpenedMeldsOnTable(tableMelds);
 
         if (isOnlineGame)
