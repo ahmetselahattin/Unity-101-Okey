@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -55,9 +55,25 @@ public class BotController : MonoBehaviour
             // 2a. 101 Seri/Grup per açma kontrolü
             OkeyRuleEngine.FindOptimalMelds(botPlayer.Hand, okeyTile, out int totalPoints, out List<List<Tile>> bestMelds);
 
-            if (totalPoints >= OkeyRuleEngine.OpenHandThreshold && bestMelds.Count > 0)
+            int meldsTilesCount = 0;
+            if (bestMelds != null)
             {
-                Debug.Log($"[BotController] Bot {botPlayer.SeatIndex} 101 barajını aştı ({totalPoints} Puan), elini masaya açıyor!");
+                foreach (var g in bestMelds) meldsTilesCount += g.Count;
+            }
+
+            // Bot da elinde taş atmak için en az 1 taş bırakmak zorundadır
+            while (bestMelds != null && bestMelds.Count > 0 && (botPlayer.Hand.Count - meldsTilesCount < 1))
+            {
+                var removed = bestMelds[bestMelds.Count - 1];
+                meldsTilesCount -= removed.Count;
+                bestMelds.RemoveAt(bestMelds.Count - 1);
+            }
+
+            int currentScore = OkeyRuleEngine.CalculateTotalPoints(bestMelds, okeyTile);
+
+            if (currentScore >= OkeyRuleEngine.OpenHandThreshold && bestMelds.Count > 0 && (botPlayer.Hand.Count - meldsTilesCount >= 1))
+            {
+                Debug.Log($"[BotController] Bot {botPlayer.SeatIndex} 101 barajını aştı ({currentScore} Puan), elini masaya açıyor!");
 
                 foreach (var tileGroup in bestMelds)
                 {
@@ -83,28 +99,77 @@ public class BotController : MonoBehaviour
             else
             {
                 // 2b. 5+ Çift açma kontrolü
-                if (OkeyRuleEngine.DetectPairs(botPlayer.Hand, okeyTile, out List<Meld> pairs) && pairs.Count >= OkeyRuleEngine.MinPairsToOpen)
+                if (OkeyRuleEngine.DetectPairs(botPlayer.Hand, okeyTile, out List<Meld> pairs))
                 {
-                    Debug.Log($"[BotController] Bot {botPlayer.SeatIndex} {pairs.Count} çift ile elini masaya açıyor!");
-
-                    foreach (var pairMeld in pairs)
+                    while (pairs != null && pairs.Count > 0 && (botPlayer.Hand.Count - (pairs.Count * 2) < 1))
                     {
-                        tableMelds.Add(pairMeld);
-                        botPlayer.OpenedMelds.Add(pairMeld);
-
-                        foreach (var t in pairMeld.Tiles)
-                        {
-                            botPlayer.RemoveTile(t);
-                        }
+                        pairs.RemoveAt(pairs.Count - 1);
                     }
 
-                    botPlayer.HasOpenedHand = true;
-                    botPlayer.HasOpenedPairs = true;
-                    botPlayer.HasDrawnFromDiscard = false;
-                    onTableUpdated?.Invoke();
+                    if (pairs != null && pairs.Count >= OkeyRuleEngine.MinPairsToOpen)
+                    {
+                        Debug.Log($"[BotController] Bot {botPlayer.SeatIndex} {pairs.Count} çift ile elini masaya açıyor!");
 
-                    yield return new WaitForSeconds(ActionDelay);
+                        foreach (var pairMeld in pairs)
+                        {
+                            tableMelds.Add(pairMeld);
+                            botPlayer.OpenedMelds.Add(pairMeld);
+
+                            foreach (var t in pairMeld.Tiles)
+                            {
+                                botPlayer.RemoveTile(t);
+                            }
+                        }
+
+                        botPlayer.HasOpenedHand = true;
+                        botPlayer.HasOpenedPairs = true;
+                        botPlayer.HasDrawnFromDiscard = false;
+                        onTableUpdated?.Invoke();
+
+                        yield return new WaitForSeconds(ActionDelay);
+                    }
                 }
+            }
+        }
+        else
+        {
+            // Daha önce açmış bot: Elinde kalan taşlardan yeni perler oluşursa masaya ekler
+            OkeyRuleEngine.FindOptimalMelds(botPlayer.Hand, okeyTile, out int addPoints, out List<List<Tile>> addMelds);
+            int addTilesCount = 0;
+            if (addMelds != null)
+            {
+                foreach (var g in addMelds) addTilesCount += g.Count;
+            }
+
+            while (addMelds != null && addMelds.Count > 0 && (botPlayer.Hand.Count - addTilesCount < 1))
+            {
+                var removed = addMelds[addMelds.Count - 1];
+                addTilesCount -= removed.Count;
+                addMelds.RemoveAt(addMelds.Count - 1);
+            }
+
+            if (addMelds != null && addMelds.Count > 0 && (botPlayer.Hand.Count - addTilesCount >= 1))
+            {
+                Debug.Log($"[BotController] Bot {botPlayer.SeatIndex} elindeki yeni perleri masaya ekliyor ({addPoints} Puan)!");
+
+                foreach (var tileGroup in addMelds)
+                {
+                    MeldType type = OkeyRuleEngine.CheckGroupPer(tileGroup, okeyTile) ? MeldType.Group : MeldType.Sequence;
+                    int points = OkeyRuleEngine.CalculateMeldPoints(tileGroup, okeyTile);
+                    Meld m = new Meld(tileGroup, type, points);
+                    tableMelds.Add(m);
+                    botPlayer.OpenedMelds.Add(m);
+
+                    foreach (var t in tileGroup)
+                    {
+                        botPlayer.RemoveTile(t);
+                    }
+                }
+
+                botPlayer.HasDrawnFromDiscard = false;
+                onTableUpdated?.Invoke();
+
+                yield return new WaitForSeconds(ActionDelay);
             }
         }
 

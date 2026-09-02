@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
@@ -386,6 +386,19 @@ public class GameManager : MonoBehaviourPunCallbacks
 
         List<List<Tile>> meldsToOpen = rawMelds;
 
+        // KURAL KONTROLÜ: Ortaya per açtığınızda elinizde taş atmak veya oyunu bitirmek için EN AZ 1 taş kalmak zorundadır!
+        int tilesBeingOpened = 0;
+        foreach (var tileGroup in meldsToOpen)
+        {
+            tilesBeingOpened += tileGroup.Count;
+        }
+
+        if (localPlayer.Hand.Count - tilesBeingOpened < 1)
+        {
+            Debug.LogWarning($"[GameManager] KURAL İHLALİ: Ortaya per açtığınızda elinizde taş atmak veya oyunu bitirmek için EN AZ 1 taş kalmak zorundadır! (Elinizdeki taş: {localPlayer.Hand.Count}, Açılmak istenen taş: {tilesBeingOpened}). Tüm taşlarınızı masaya açamazsınız.");
+            return;
+        }
+
         // YANDAN TAŞ ALINDIĞINDA O TAŞI KULLANMA ŞARTI KONTROLÜ
         if (localPlayer.HasDrawnFromDiscard && localPlayer.DrawnDiscardTile != null)
         {
@@ -456,6 +469,23 @@ public class GameManager : MonoBehaviourPunCallbacks
         {
             if (OkeyRuleEngine.DetectPairs(player.Hand, deckManager.OkeyTile, out List<Meld> remainingPairs) && remainingPairs.Count > 0)
             {
+                int pairTilesCount = 0;
+                foreach (var p in remainingPairs) pairTilesCount += p.Tiles.Count;
+
+                // Elinde en az 1 taş kalacak şekilde çiftleri ayarla
+                while (remainingPairs.Count > 0 && (player.Hand.Count - pairTilesCount < 1))
+                {
+                    var removedPair = remainingPairs[remainingPairs.Count - 1];
+                    pairTilesCount -= removedPair.Tiles.Count;
+                    remainingPairs.RemoveAt(remainingPairs.Count - 1);
+                }
+
+                if (remainingPairs.Count == 0)
+                {
+                    Debug.LogWarning("[GameManager] KURAL İHLALİ: Çift açtığınızda elinizde taş atmak için EN AZ 1 taş kalmak zorundadır! Tüm taşlarınızı masaya açamazsınız.");
+                    return;
+                }
+
                 if (player.HasDrawnFromDiscard && player.DrawnDiscardTile != null)
                 {
                     bool usedDrawnTile = remainingPairs.Exists(p => p.Tiles.Exists(t => t == player.DrawnDiscardTile || t.IsSame(player.DrawnDiscardTile)));
@@ -504,6 +534,15 @@ public class GameManager : MonoBehaviourPunCallbacks
         // 2. İlk defa çift açan oyuncu (en az 5 çift gerekli)
         if (OkeyRuleEngine.ValidateOpenPairs(player.Hand, deckManager.OkeyTile, out List<Meld> pairsToOpen, out string error))
         {
+            int pairTilesCount = 0;
+            foreach (var p in pairsToOpen) pairTilesCount += p.Tiles.Count;
+
+            if (player.Hand.Count - pairTilesCount < 1)
+            {
+                Debug.LogWarning($"[GameManager] KURAL İHLALİ: Çift açtığınızda elinizde taş atmak için EN AZ 1 taş kalmak zorundadır! (Elinizdeki taş: {player.Hand.Count}, Açılmak istenen taş: {pairTilesCount}).");
+                return;
+            }
+
             if (player.HasDrawnFromDiscard && player.DrawnDiscardTile != null)
             {
                 bool usedDrawnTile = false;
@@ -566,6 +605,12 @@ public class GameManager : MonoBehaviourPunCallbacks
             return false;
         }
 
+        if (players[localSeatIndex].Hand.Count <= 1)
+        {
+            Debug.LogWarning("[GameManager] KURAL İHLALİ: Elinizdeki son taşı masaya işleyemezsiniz! Oyunu bitirmek için bu taşı ortaya veya sağa atmanız gerekir.");
+            return false;
+        }
+
         if (meldIndex < 0 || meldIndex >= tableMelds.Count || tile == null)
             return false;
 
@@ -607,11 +652,77 @@ public class GameManager : MonoBehaviourPunCallbacks
     public bool CanPlayerDiscard()
     {
         if (isGameOver || currentPlayerIndex != localSeatIndex) return false;
-        if (!hasDrawnTileThisTurn && !isFirstTurn) return false;
 
         if (players[localSeatIndex].HasDrawnFromDiscard) return false;
 
+        // Elinde 1 taş kalmış ve elini açmış oyuncu bu son bitiş taşını doğrudan atıp bitirebilir
+        if (players[localSeatIndex].Hand.Count == 1 && players[localSeatIndex].HasOpenedHand)
+        {
+            return true;
+        }
+
+        if (!hasDrawnTileThisTurn && !isFirstTurn) return false;
+
         return true;
+    }
+
+    public bool CanPlayerFinishToCenter()
+    {
+        if (isGameOver || currentPlayerIndex != localSeatIndex) return false;
+
+        Player localPlayer = players[localSeatIndex];
+        if (localPlayer == null) return false;
+
+        // Oyuncunun elini açmış olması ve elinde tam 1 taş kalmış olması gerekir
+        if (!localPlayer.HasOpenedHand)
+        {
+            Debug.LogWarning("[GameManager] Ortaya taş atıp oyunu bitirmek için önce elinizi açmış olmanız gerekir!");
+            return false;
+        }
+
+        if (localPlayer.Hand.Count != 1)
+        {
+            Debug.LogWarning($"[GameManager] Ortaya taş atıp bitirmek için elinizde tam 1 taş kalmış olması gerekir! (Mevcut taş sayısı: {localPlayer.Hand.Count})");
+            return false;
+        }
+
+        if (localPlayer.HasDrawnFromDiscard)
+        {
+            Debug.LogWarning("[GameManager] KURAL İHLALİ: Soldan aldığınız taşı kullanmadan oyunu bitiremezsiniz!");
+            return false;
+        }
+
+        return true;
+    }
+
+    public void OnPlayerFinishToCenter(Tile finishingTile)
+    {
+        if (!CanPlayerFinishToCenter()) return;
+
+        if (finishingTile != null && players[localSeatIndex] != null)
+        {
+            players[localSeatIndex].RemoveTile(finishingTile);
+            Debug.Log($"[GameManager] 🏆 OYUNCU ORTAYA BİTİŞ TAŞI ATTI: {finishingTile}");
+        }
+
+        hasDrawnTileThisTurn = false;
+
+        bool isOkey = (deckManager != null && deckManager.OkeyTile != null) && OkeyRuleEngine.IsOkeyTile(finishingTile, deckManager.OkeyTile);
+        FinishType finish = isOkey ? FinishType.Okey : (players[localSeatIndex].HasOpenedPairs ? FinishType.Pairs : FinishType.Normal);
+
+        if (uiManager != null)
+        {
+            uiManager.RefreshHand(players[localSeatIndex].Hand);
+        }
+
+        if (isOnlineGame)
+        {
+            photonView.RPC(nameof(RPC_OnGameFinished), RpcTarget.All, localSeatIndex, (int)finish);
+        }
+        else
+        {
+            HandleGameFinished(players[0], finish);
+        }
     }
 
     public void OnPlayerDiscardTile(Tile discardedTile)
@@ -645,6 +756,11 @@ public class GameManager : MonoBehaviourPunCallbacks
         {
             bool isOkey = OkeyRuleEngine.IsOkeyTile(discardedTile, deckManager.OkeyTile);
             FinishType finish = isOkey ? FinishType.Okey : (players[localSeatIndex].HasOpenedPairs ? FinishType.Pairs : FinishType.Normal);
+
+            if (uiManager != null)
+            {
+                uiManager.RefreshHand(players[localSeatIndex].Hand);
+            }
 
             if (isOnlineGame)
             {

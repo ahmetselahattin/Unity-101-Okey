@@ -1,10 +1,11 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.EventSystems;
 
 public class DropZone : MonoBehaviour, IDropHandler
 {
     [Header("Bölge Türü")]
     public bool isRightDiscardZone = true;
+    public bool isCenterFinishZone = false;
 
     public void OnDrop(PointerEventData eventData)
     {
@@ -15,6 +16,25 @@ public class DropZone : MonoBehaviour, IDropHandler
 
         TileDisplay tileDisplay = droppedTile.GetComponent<TileDisplay>();
         Tile tileData = tileDisplay != null ? tileDisplay.tileData : null;
+
+        if (isCenterFinishZone)
+        {
+            // Ortaya taş atarak oyunu bitirme kontrolü
+            if (GameManager.Instance != null)
+            {
+                if (GameManager.Instance.CanPlayerFinishToCenter())
+                {
+                    droppedTile.ParentToReturnTo = this.transform;
+                    GameManager.Instance.OnPlayerFinishToCenter(tileData);
+                    Destroy(droppedTile.gameObject);
+                }
+                else
+                {
+                    Debug.LogWarning("[DropZone] Ortaya sadece elinizde son 1 taş kaldığında ve elinizi açtığınızda oyunu bitirmek için taş atabilirsiniz!");
+                }
+            }
+            return;
+        }
 
         if (isRightDiscardZone)
         {
